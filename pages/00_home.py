@@ -19,7 +19,7 @@ def Page():
 
     solara.Markdown("## 研究區域")
 
-    with solara.Column(style={"height": "500px", "width": "100%"}):
+    with solara.Column(style={"height": "500px", "width": "80%"}):
         
         # ✅ 強制設定法：直接指定 center (中心點) 和 zoom (縮放層級)
         # center = [緯度 Lat, 經度 Lon] -> 我算好澎湖中心大概在 [23.52, 119.54]
@@ -33,7 +33,4 @@ def Page():
         # 這裡依然畫上紅框框，讓讀者知道確切範圍
         bounds = [119.2741441721767, 23.169481136848866, 119.81144310766382, 23.87924197009108]
         m.add_bbox(bounds, color="red", weight=3, opacity=0.8, fill=False)
-
-        # 這一行 m.zoom_to_bounds(bounds) 可以刪掉了，因為我們上面已經強制設定好位置了
-        
-        m.element()
+        return m
