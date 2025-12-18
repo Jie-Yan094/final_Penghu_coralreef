@@ -33,4 +33,5 @@ def Page():
         # 這裡依然畫上紅框框，讓讀者知道確切範圍
         bounds = [119.2741441721767, 23.169481136848866, 119.81144310766382, 23.87924197009108]
         m.add_bbox(bounds, color="red", weight=3, opacity=0.8, fill=False)
-        return m
+        
+        return solara.display(m)
