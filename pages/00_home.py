@@ -1,5 +1,5 @@
 import solara
-import leafmap
+import leafmap.leafmap as leafmap
 
 # 1. 建立一個「響應式」變數
 name = solara.reactive("Guest")
