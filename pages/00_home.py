@@ -14,10 +14,8 @@ try:
     print(f"正在從 GitHub 讀取資料: {csv_url} ...")
     z_data = pd.read_csv(csv_url)
     
-    if 'X' in z_data.columns and 'Y' in z_data.columns and 'GRID_CODE' in z_data.columns:
-        
-        # 1. 轉矩陣
-        z_matrix = z_data.pivot(index='Y', columns='X', values='GRID_CODE')
+    if 'x' in z_data.columns and 'y' in z_data.columns and 'VALUE' in z_data.columns:
+        z_matrix = z_data.pivot(index='y', columns='x', values='VALUE')
         
         # 2. 🔴 降低解析度 (關鍵修正)
         # 為了讓瀏覽器能跑得動，我們每隔 5 點取樣一次
