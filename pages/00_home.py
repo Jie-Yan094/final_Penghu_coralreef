@@ -4,32 +4,53 @@ import pandas as pd
 import plotly.graph_objects as go
 
 # ==========================================
-# 1. 資料處理區
+# 1. 資料處理區 (增強除錯版)
 # ==========================================
 csv_url = "https://raw.githubusercontent.com/Jie-Yan094/final_Penghu_coralreef/main/penghuDTM.csv"
 fig_3d = None
 error_msg = None
 
 try:
-    print(f"正在從 GitHub 讀取資料: {csv_url} ...")
+    print(f"正在讀取: {csv_url} ...")
     z_data = pd.read_csv(csv_url)
     
+    # 檢查欄位是否存在
     if 'x' in z_data.columns and 'y' in z_data.columns and 'VALUE' in z_data.columns:
+        
+        # 🛠️ 修正 1：強制將資料轉為「數字」，避免讀成文字
+        z_data['x'] = pd.to_numeric(z_data['x'], errors='coerce')
+        z_data['y'] = pd.to_numeric(z_data['y'], errors='coerce')
+        z_data['VALUE'] = pd.to_numeric(z_data['VALUE'], errors='coerce')
+
+        # 移除轉型失敗的髒資料 (NaN)
+        z_data = z_data.dropna()
+
+        # 🛠️ 修正 2：先對座標進行排序，這對 pivot 很重要
+        z_data = z_data.sort_values(by=['y', 'x'])
+
+        # 轉換為矩陣
         z_matrix = z_data.pivot(index='y', columns='x', values='VALUE')
         
-        # 2. 🔴 降低解析度 (關鍵修正)
-        # 為了讓瀏覽器能跑得動，我們每隔 5 點取樣一次
-        # 這會大幅減少資料量，但保留地形特徵
+        # 🛠️ 修正 3：填補矩陣中的空洞 (因為不是每個網格點都有衛星資料)
+        # 用 0 或平均值填補，這裡用線性插值會比較漂亮，但先用 0 確保能畫出來
+        z_matrix = z_matrix.fillna(0) 
+
+        # 降低解析度 (每 5 點取 1 點)，避免網頁跑不動
         step = 5 
         z_matrix_small = z_matrix.iloc[::step, ::step]
-        print(f"原始大小: {z_matrix.shape} -> 縮減後大小: {z_matrix_small.shape}")
         
-        # 3. 準備數據
+        print(f"矩陣形狀 (Shape): {z_matrix_small.shape}")
+        print(f"數值範圍: Min={z_matrix_small.values.min()}, Max={z_matrix_small.values.max()}")
+
+        if z_matrix_small.size == 0:
+            raise ValueError("矩陣為空，可能是因為座標 X, Y 無法對齊成網格")
+
+        # 準備繪圖數據
         x_data = z_matrix_small.columns
         y_data = z_matrix_small.index
         z_data_matrix = z_matrix_small.values
 
-        # 4. 建立圖表
+        # 建立圖表
         fig_3d = go.Figure(data=[
             go.Surface(
                 x=x_data,
@@ -42,13 +63,14 @@ try:
 
         fig_3d.update_layout(
             title="澎湖海底地形 DEM 3D 模型",
-            autosize=True, # 讓它自動填滿容器
+            autosize=True,
             margin=dict(l=0, r=0, b=0, t=50),
             scene=dict(
                 xaxis_title='經度',
                 yaxis_title='緯度',
                 zaxis_title='高程',
-                aspectmode='data'
+                aspectmode='manual',  # 手動調整比例，避免看起來扁扁的
+                aspectratio=dict(x=1, y=1, z=0.5) 
             )
         )
         print("✅ 3D 圖表建立成功！")
@@ -60,8 +82,6 @@ try:
 except Exception as e:
     error_msg = f"❌ 資料讀取發生錯誤: {e}"
     print(error_msg)
-
-
 # ==========================================
 # 2. 頁面組件
 # ==========================================
