@@ -8,3 +8,5 @@ rasterio
 rioxarray
 solara
 widgetsnbextension
+numpy
+scipy
