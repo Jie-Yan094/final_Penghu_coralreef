@@ -62,7 +62,7 @@ try:
         ])
 
         fig_3d.update_layout(
-            title="澎湖海底地形 DEM 3D 模型",
+            title="澎湖地形 DEM 3D 模型",
             autosize=True,
             margin=dict(l=0, r=0, b=0, t=50),
             scene=dict(
@@ -113,7 +113,7 @@ def Page():
         solara.Markdown("---")
 
         # --- 3D 地形區塊 ---
-        solara.Markdown("### 2. 海底地形 DEM 模型")
+        solara.Markdown("### 2. 地形 DEM 模型")
         
         # 🔴 強制設定高度，確保圖表有空間顯示
         with solara.Column(style={"width": "90%", "max-width": "1000px", "height": "700px"}):
