@@ -1,8 +1,9 @@
 import solara
-import geemap.foliumap as geemap  # 【關鍵】改用 foliumap，不依賴 WebSocket
+import geemap.foliumap as geemap
 import ee
 import os
 import json
+import tempfile  # 【新增】用於處理暫存檔
 from google.oauth2.service_account import Credentials
 
 # ==========================================
@@ -30,15 +31,13 @@ except Exception as e:
 selected_year = solara.reactive(2021)
 
 # ==========================================
-# 2. 地圖組件 (Folium HTML 版 - 絕對穩定)
+# 2. 地圖組件 (Folium HTML + TempFile 修復版)
 # ==========================================
 @solara.component
 def MapComponent(year):
     
-    # 建立地圖函數
     def get_map_html():
-        # 1. 初始化地圖 (使用 foliumap)
-        # 這裡產生的不是 Widget，而是靜態的地圖物件，中心點寫死在裡面
+        # 1. 初始化地圖 (Folium)
         m = geemap.Map(center=[23.5, 119.5], zoom=11)
         
         # 2. GEE 資料處理
@@ -53,15 +52,12 @@ def MapComponent(year):
                       .median()
                       .clip(roi))
 
-        # 計算 NDCI
         ndci = collection.normalizedDifference(['B5', 'B4']).rename('NDCI')
         
-        # 水體遮罩
         ndwi = collection.normalizedDifference(['B3', 'B8'])
         water_mask = ndwi.gt(0)
         ndci_masked = ndci.updateMask(water_mask)
 
-        # 視覺參數
         ndci_vis = {
             'min': -0.1, 
             'max': 0.5, 
@@ -72,8 +68,6 @@ def MapComponent(year):
         try:
             m.addLayer(collection, {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}, 'True Color')
             m.addLayer(ndci_masked, ndci_vis, 'NDCI')
-            
-            # 加入 Colorbar (foliumap 的 colorbar 比較穩定)
             m.add_colorbar(
                 colors=['blue', 'white', 'green', 'yellow', 'red'], 
                 vmin=-0.1, 
@@ -83,16 +77,31 @@ def MapComponent(year):
         except Exception as e:
             print(f"圖層加入失敗: {e}")
             
-        # 4. 轉為 HTML 字串
-        return m.to_html()
+        # 4. 【關鍵修復】使用系統暫存區來生成 HTML
+        # 使用 tempfile 確保我們有權限寫入，且檔名不會衝突
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
+                temp_path = tmp.name
+            
+            # 將地圖存入暫存路徑
+            m.to_html(filename=temp_path)
+            
+            # 讀取暫存檔內容
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+                
+            # (選用) 讀完後刪除暫存檔以節省空間
+            os.remove(temp_path)
+            
+            return html_content
+            
+        except Exception as e:
+            return f"<div>地圖生成錯誤: {str(e)}</div>"
 
-    # 使用 use_memo 只有在年份改變時才重新生成 HTML
-    # 這會讓地圖在切換年份時閃一下，但保證位置正確
+    # 使用 use_memo 緩存 HTML
     map_html = solara.use_memo(get_map_html, dependencies=[year])
 
-    # 5. 使用 Iframe 顯示
-    # 這是最暴力的解法：直接把生成的 HTML 塞進一個框架裡
-    # 這樣 Solara 就管不到地圖內部，地圖也不會被 Solara 的佈局影響
+    # 5. 顯示
     return solara.components.html.Iframe(
         src_doc=map_html,
         width="100%",
@@ -111,6 +120,4 @@ def Page():
         
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
             solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024)
-            
-            # 呼叫地圖
             MapComponent(selected_year.value)
