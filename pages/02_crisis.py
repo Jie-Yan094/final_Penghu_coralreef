@@ -1,16 +1,12 @@
 import solara
-import ipyleaflet
+import geemap  # 【修改 1】改用 geemap，它對 GEE 的支援度最好
 import ee
 import os
 import json
 from google.oauth2.service_account import Credentials
 
-# 訊息顯示
-error_msg = solara.reactive("")
-info_msg = solara.reactive("")
-
 # ==========================================
-# 0. GEE 驗證
+# 0. GEE 驗證與初始化
 # ==========================================
 try:
     key_content = os.environ.get('EARTHENGINE_TOKEN')
@@ -31,83 +27,73 @@ except Exception as e:
 # ==========================================
 # 1. 變數定義
 # ==========================================
-selected_year = solara.reactive(2023)
+selected_year = solara.reactive(2024)
 
 # ==========================================
-# 2. 地圖生產函數
+# 2. 地圖生產函數 (使用 geemap 優化版)
 # ==========================================
-def get_map(year_val):
-    # 定義澎湖的邊界 (南, 西, 北, 東)
-    # 這是最保險的定位方式
-    bounds = ((23.1, 119.3), (23.8, 119.8))
-    
-    # 建立地圖
-    m = ipyleaflet.Map(
-        center=[23.5, 119.5], 
-        zoom=11, 
-        scroll_wheel_zoom=True
-    )
-    
-    # 加入圖層控制器
-    m.add_control(ipyleaflet.LayersControl(position='topright'))
-
-    # 【關鍵】強制設定地圖邊界，確保一定會跳轉到澎湖
-    m.fit_bounds(bounds)
+def get_final_map(year_val):
+    # 【修改 2】使用 geemap.Map
+    m = geemap.Map(center=[23.5, 119.5], zoom=11)
+    # 設定底圖，HYBRID 對於觀察沿岸特徵比較清楚
+    m.add_basemap("HYBRID")
 
     roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
     start_date = f'{year_val}-01-01'
     end_date = f'{year_val}-12-31'
     
+    # 獲取影像集合
+    collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                  .filterBounds(roi)
+                  .filterDate(start_date, end_date)
+                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+                  .median()
+                  .clip(roi)) # 在這裡先 Clip，後續計算比較乾淨
+
+    # 計算 NDCI (Normalized Difference Chlorophyll Index)
+    # 公式: (RedEdge1 - Red) / (RedEdge1 + Red) -> (B5 - B4) / (B5 + B4)
+    ndci = collection.normalizedDifference(['B5', 'B4']).rename('NDCI')
+
+    # 【優化】簡單的水體遮罩 (選擇性)：利用 NDWI 把陸地遮掉，讓 NDCI 只顯示在海面上
+    # NDWI = (Green - NIR) / (Green + NIR) -> (B3 - B8) / (B3 + B8)
+    ndwi = collection.normalizedDifference(['B3', 'B8'])
+    water_mask = ndwi.gt(0) # NDWI > 0 視為水體
+    ndci_masked = ndci.updateMask(water_mask)
+
+    # 視覺化參數 (使用 Hex code 比較保險)
+    # 藍色(低葉綠素) -> 白色 -> 綠色 -> 黃色 -> 紅色(高葉綠素/優養化)
+    palette = ['#0000ff', '#ffffff', '#00ff00', '#ffff00', '#ff0000']
+    
+    ndci_vis = {
+        'min': -0.1, 
+        'max': 0.5, 
+        'palette': palette
+    }
+    
+    rgb_vis = {
+        'min': 0, 
+        'max': 3000, 
+        'bands': ['B4', 'B3', 'B2']
+    }
+
     try:
-        # 1. GEE 影像運算
-        collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                      .filterBounds(roi)
-                      .filterDate(start_date, end_date))
-
-        count = collection.size().getInfo()
-        print(f"🔍 {year_val} 年共找到 {count} 張影像")
+        # 【修改 3】使用 geemap 的 addLayer
+        m.addLayer(collection, rgb_vis, f"{year_val} 真實色彩 (RGB)")
+        m.addLayer(ndci_masked, ndci_vis, f"{year_val} 葉綠素指標 (NDCI)")
         
-        if count == 0:
-            error_msg.set(f"❌ {year_val} 年無影像")
-            return m
-
-        # 2. 取中位數
-        image = collection.median().clip(roi)
-        ndci = image.normalizedDifference(['B5', 'B4']).rename('NDCI')
-
-        # 3. 設定視覺化參數
-        ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': ['blue', 'white', 'green', 'yellow', 'red']}
-        rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
-
-        # ======================================================
-        # 手動取得 MapID
-        # ======================================================
+        # 【修改 4】加入 Colorbar (geemap 的寫法)
+        m.add_colorbar_branca(
+            colors=palette, 
+            vmin=-0.1, 
+            vmax=0.5, 
+            label="NDCI 葉綠素濃度 (優養化程度)"
+        )
         
-        # A. 真實色彩 (底圖)
-        map_id_rgb = image.getMapId(rgb_vis)
-        layer_rgb = ipyleaflet.TileLayer(
-            url=map_id_rgb['tile_fetcher'].url_format, 
-            name=f"{year_val} 真實色彩",
-            attribution="Google Earth Engine"
-        )
-        m.add_layer(layer_rgb)
-
-        # B. NDCI 優養化指標 (上層)
-        map_id_ndci = ndci.getMapId(ndci_vis)
-        layer_ndci = ipyleaflet.TileLayer(
-            url=map_id_ndci['tile_fetcher'].url_format, 
-            name=f"{year_val} NDCI 指標",
-            attribution="Google Earth Engine"
-        )
-        m.add_layer(layer_ndci)
-
-        # 成功訊息
-        error_msg.set("")
-        info_msg.set(f"✅ {year_val} 年載入成功 (共 {count} 張合成)")
+        # 自動縮放到 ROI
+        m.centerObject(roi, 11)
         
     except Exception as e:
-        error_msg.set(f"載入失敗: {str(e)}")
-        print(f"❌ 詳細錯誤: {e}")
+        print(f"圖層載入警告: {e}")
     
     return m
 
@@ -116,41 +102,48 @@ def get_map(year_val):
 # ==========================================
 @solara.component
 def Page():
-    # CSS 確保地圖滿版
-    solara.Style("""
-        .jupyter-widgets { width: 100% !important; }
-        .leaflet-container { width: 100% !important; height: 100% !important; }
-    """)
-
-    with solara.Column(style={"width": "100%", "padding-bottom": "50px"}):
+    with solara.Column(style={"width": "100%", "padding": "20px"}):
         
-        with solara.Row(justify="center"):
+        with solara.Column(align="center"):
+            solara.Markdown("## 危害澎湖珊瑚礁之各項因子")
             with solara.Column(style={"max-width": "800px"}):
-                solara.Markdown("## 危害澎湖珊瑚礁之各項因子")
-                solara.Markdown("---")
-                solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
-                
-                if error_msg.value:
-                    solara.Error(error_msg.value)
-                if info_msg.value:
-                    solara.Success(info_msg.value)
+                solara.Markdown(
+                    """
+                    珊瑚礁生態系統面臨多重威脅，包括氣候變遷引發的海水溫度上升、海洋酸化、海水優樣化，以及人類活動如過度捕撈、污染和沿海開發等。
+                    """
+                )
+            solara.Markdown("---")
 
-        solara.Markdown("### Sentinel-2 衛星監測地圖")
-        
-        with solara.Row(justify="center"):
-            with solara.Column(style={"width": "300px"}):
-                solara.SliderInt(label="選擇年份", value=selected_year, min=2017, max=2024)
+        solara.Markdown("## 1. 海溫分布變化")
+        solara.Markdown("---")
 
-        # 地圖容器
-        with solara.Column(style={"width": "100%", "height": "650px", "border": "1px solid #ddd", "margin-top": "20px"}):
-            # 這裡拿掉了 key，因為 ipyleaflet 每次重新產生就會是新的物件
-            # 配合 fit_bounds 應該就能正確定位
-            m = get_map(selected_year.value)
-            m.element()
+        solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
         
-        # 色標
-        with solara.Row(justify="center", style={"margin-top": "10px"}):
-            solara.Markdown("**色標說明：** 🔵 藍色(低濃度/清澈) ➝ ⚪ 白色 ➝ 🟢 綠色 ➝ 🟡 黃色 ➝ 🔴 紅色(高濃度/優養化)")
+        with solara.Column(style={"max-width": "900px", "margin": "0 auto"}):
+            solara.Markdown("""
+            ### 優養化（Eutrophication）
+            我們使用 Sentinel-2 衛星影像計算 **NDCI 指標** (Normalized Difference Chlorophyll Index) 來評估葉綠素濃度：
+            * 🔵 **藍色**：水質清澈 (低葉綠素)。
+            * 🟢 **綠色**：正常浮游生物量。
+            * 🔴 **紅色**：優養化風險高 (藻類爆發)。
+            *(註：已自動遮罩陸地範圍)*
+            """)
+        
+        # 地圖區塊
+        with solara.Card("Sentinel-2 衛星葉綠素監測"):
+            solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024) 
+            # Sentinel-2 資料通常從 2015 後半開始，建議 slider 從 2016 或 2019 開始比較完整
             
-        with solara.Row(justify="center", style={"margin-top": "20px"}):
-             solara.Markdown("---")
+            # 呼叫地圖函數
+            m = get_final_map(selected_year.value)
+            
+            # 顯示地圖
+            # geemap 物件在 solara 中也是 ipywidget，直接用 element() 渲染
+            m.element(height="700px")
+
+        solara.Markdown("---")
+        solara.Markdown("## 3. 珊瑚礁生態系崩壞")
+        solara.Markdown("預留空間")
+        solara.Markdown("---")
+        solara.Markdown("## 4. 人類活動影響")
+        solara.Markdown("預留空間")
