@@ -10,3 +10,5 @@ solara
 widgetsnbextension
 numpy
 scipy
+earthengine-api
+google-auth
