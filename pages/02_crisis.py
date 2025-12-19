@@ -31,7 +31,7 @@ except Exception as e:
 selected_year = solara.reactive(2025)
 
 # ==========================================
-# 2. 地圖組件 (寬度修復 + 全年份陸地遮罩)
+# 2. 地圖組件 (圖例修復版)
 # ==========================================
 @solara.component
 def MapComponent(year):
@@ -71,13 +71,11 @@ def MapComponent(year):
                 qa_mask = qa.bitwiseAnd(cloud_bit_mask).eq(0).And(
                           qa.bitwiseAnd(cirrus_bit_mask).eq(0))
                 
-                # 2. 【新增】使用 NDWI 去除陸地 (NDWI > 0 為水體)
+                # 2. 使用 NDWI 去除陸地 (NDWI > 0 為水體)
                 ndwi = image.normalizedDifference(['B3', 'B8'])
                 water_mask = ndwi.gt(0) 
                 
-                # 結合兩個遮罩
                 final_mask = qa_mask.And(water_mask)
-                
                 return image.updateMask(final_mask).divide(10000)
 
         # 4. 指數計算
@@ -95,23 +93,31 @@ def MapComponent(year):
 
         image_median = s2.median().clip(roi)
 
-        # 6. 視覺化參數
+        # 6. 視覺化參數 (定義一次，重複使用)
         ndci_vis = {
             'min': -0.05, 
             'max': 0.15,
             'palette': ['#0011ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000']
         }
         
-        # 7. 加入圖層
+        # 7. 加入圖層與圖例
         try:
             m.addLayer(image_median, {'bands': ['B4', 'B3', 'B2'], 'min': 0, 'max': 0.3}, 'True Color')
-            m.addLayer(image_median.select('NDCI'), ndci_vis, 'NDCI (Chlorophyll)')
+            
+            # 加入 NDCI 圖層
+            layer_name = 'NDCI (Chlorophyll)'
+            m.addLayer(image_median.select('NDCI'), ndci_vis, layer_name)
+            
+            # 【關鍵修復】
+            # 直接傳入 ndci_vis 字典，並指定 layer_name，這樣 geemap 才能正確綁定參數
             m.add_colorbar(
-                colors=['#0011ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000'], 
-                vmin=-0.05, vmax=0.15, label="NDCI Chlorophyll Index"
+                ndci_vis, 
+                label="NDCI Chlorophyll Index", 
+                layer_name=layer_name
             )
+            
         except Exception as e:
-            print(f"圖層加入失敗: {e}")
+            print(f"圖層/圖例加入失敗: {e}")
             
         # 8. 生成 HTML
         try:
@@ -127,7 +133,7 @@ def MapComponent(year):
 
     map_html = solara.use_memo(get_map_html, dependencies=[year])
 
-    # 9. 顯示 Iframe (寬度修復：width=100%)
+    # 9. 顯示 Iframe (寬度設定為 100%)
     return solara.HTML(
         tag="iframe",
         attributes={
@@ -143,10 +149,8 @@ def MapComponent(year):
 # ==========================================
 @solara.component
 def Page():
-    # 主容器：保持 align="center" 讓文字置中，但透過內部寬度控制讓地圖撐開
     with solara.Column(style={"width": "100%", "padding": "20px"}, align="center"):
         
-        # --- 標題與文字區 (限制寬度以利閱讀) ---
         with solara.Column(style={"max-width": "900px", "width": "100%"}):
             solara.Markdown("# 危害澎湖珊瑚礁之各項因子")
             solara.Markdown("---")
@@ -157,9 +161,8 @@ def Page():
             
             solara.Markdown("""
             ### 優養化（Eutrophication）
-            水體中營養鹽過多導致藻類爆發，會遮蔽陽光並覆蓋珊瑚。
             * 🔵 **藍色**：水質清澈
-            * 🔴 **紅色**：優養化風險高 (藻類濃度高)
+            * 🔴 **紅色**：優養化風險高
             """)
             
             solara.Markdown(f"### 夏季 (5月-9月) 平均狀態")
@@ -168,16 +171,12 @@ def Page():
             else:
                 solara.Markdown("*(年份 ≥ 2019：使用 SR 資料 + SCL 精準去陸地)*", style="font-size: 12px; color: green;")
 
-        # --- 地圖區塊 (放寬寬度限制，解決被擠扁的問題) ---
-        # 這裡不限制 max-width，或者設得很大，確保地圖能橫向展開
+        # 地圖區塊
         with solara.Column(style={"width": "100%", "padding-top": "20px"}):
             with solara.Card("Sentinel-2 衛星葉綠素監測"):
-                # Slider
                 solara.SliderInt(label="選擇年份", value=selected_year, min=2016, max=2025)
-                # Map (現在應該會撐滿卡片)
                 MapComponent(selected_year.value)
         
-        # --- 底部文字區 ---
         with solara.Column(style={"max-width": "900px", "width": "100%", "padding-top": "20px"}):
             solara.Markdown("---")
             solara.Markdown("## 3. 珊瑚礁生態系崩壞")
