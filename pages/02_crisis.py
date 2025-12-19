@@ -1,11 +1,11 @@
 import solara
-import leafmap.leafmap as leafmap
+import leafmap
 import ee
 import os
 import json
 from google.oauth2.service_account import Credentials
 
-# 訊息變數
+# 訊息顯示
 error_msg = solara.reactive("")
 info_msg = solara.reactive("")
 
@@ -34,11 +34,18 @@ except Exception as e:
 selected_year = solara.reactive(2023)
 
 # ==========================================
-# 2. 地圖生產函數 (改用 getMapId 直通法)
+# 2. 地圖生產函數 (關閉工具列 + 手動 URL)
 # ==========================================
 def get_map(year_val):
-    # 建立地圖
-    m = leafmap.Map(center=[23.5, 119.5], zoom=12)
+    # 【關鍵修正】建立地圖時，把會報錯的工具列全部關掉
+    m = leafmap.Map(
+        center=[23.5, 119.5], 
+        zoom=12,
+        toolbar_control=False,  # 關閉主要工具列 (解決 cog_layer_dict 錯誤)
+        draw_control=False,     # 關閉繪圖工具
+        layers_control=True     # 保留圖層切換 (右上角那個)
+    )
+    
     m.add_basemap("HYBRID")
 
     roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
@@ -63,12 +70,13 @@ def get_map(year_val):
         ndci = image.normalizedDifference(['B5', 'B4']).rename('NDCI')
 
         # 3. 設定視覺化參數
-        palette = ['blue', 'white', 'green', 'yellow', 'red']
-        ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette}
+        palette_str = 'blue,white,green,yellow,red'
+        ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette_str}
         rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
 
-        # 【關鍵修改】手動索取 MapID (繞過 add_ee_layer 的 bug)
-        # 這會直接向 Google 要一個網址，而不是讓 Python 套件去轉譯
+        # ======================================================
+        # 手動索取 MapID (最穩定的圖層載入法)
+        # ======================================================
         
         # A. 真實色彩圖層
         map_id_rgb = image.getMapId(rgb_vis)
@@ -78,10 +86,10 @@ def get_map(year_val):
         # B. NDCI 優養化圖層
         map_id_ndci = ndci.getMapId(ndci_vis)
         tile_url_ndci = map_id_ndci['tile_fetcher'].url_format
-        m.add_tile_layer(url=tile_url_ndci, name=f"{year_val} 葉綠素(優養化)指標", attribution="Google Earth Engine")
+        m.add_tile_layer(url=tile_url_ndci, name=f"{year_val} NDCI 指標", attribution="Google Earth Engine")
 
-        # 加上色標 (這是純 UI，不會影響圖層)
-        m.add_colorbar(colors=palette, vmin=-0.1, vmax=0.5, label="NDCI")
+        # 加上色標
+        m.add_colorbar(colors=['blue', 'white', 'green', 'yellow', 'red'], vmin=-0.1, vmax=0.5, label="NDCI")
         
         # 4. 強制視角
         m.set_center(119.5, 23.5, 12)
@@ -101,6 +109,7 @@ def get_map(year_val):
 # ==========================================
 @solara.component
 def Page():
+    # CSS 強制修復版面
     solara.Style("""
         .jupyter-widgets { width: 100% !important; }
         .leaflet-container { width: 100% !important; height: 100% !important; }
@@ -112,22 +121,4 @@ def Page():
             with solara.Column(style={"max-width": "800px"}):
                 solara.Markdown("## 危害澎湖珊瑚礁之各項因子")
                 solara.Markdown("---")
-                solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
-                
-                if error_msg.value:
-                    solara.Error(error_msg.value)
-                if info_msg.value:
-                    solara.Success(info_msg.value)
-
-        solara.Markdown("### Sentinel-2")
-        
-        with solara.Row(justify="center"):
-            with solara.Column(style={"width": "300px"}):
-                solara.SliderInt(label="選擇年份", value=selected_year, min=2017, max=2024)
-
-        with solara.Column(style={"width": "100%", "height": "650px", "border": "1px solid #ddd", "margin-top": "20px"}):
-            m = get_map(selected_year.value)
-            m.element()
-            
-        with solara.Row(justify="center", style={"margin-top": "20px"}):
-             solara.Markdown("---")
+                solara.Markdown("## 2. 海洋優養化
