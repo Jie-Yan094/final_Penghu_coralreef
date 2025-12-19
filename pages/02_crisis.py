@@ -119,7 +119,7 @@ def Page():
                 if info_msg.value:
                     solara.Success(info_msg.value)
 
-        solara.Markdown("### Sentinel-2 衛星監測地圖")
+        solara.Markdown("### Sentinel-2")
         
         with solara.Row(justify="center"):
             with solara.Column(style={"width": "300px"}):
