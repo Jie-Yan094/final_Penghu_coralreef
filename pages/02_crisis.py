@@ -3,7 +3,7 @@ import geemap.foliumap as geemap
 import ee
 import os
 import json
-import tempfile  # 【新增】用於處理暫存檔
+import tempfile
 from google.oauth2.service_account import Credentials
 
 # ==========================================
@@ -31,7 +31,7 @@ except Exception as e:
 selected_year = solara.reactive(2021)
 
 # ==========================================
-# 2. 地圖組件 (Folium HTML + TempFile 修復版)
+# 2. 地圖組件 (Folium HTML + TempFile + Iframe修正版)
 # ==========================================
 @solara.component
 def MapComponent(year):
@@ -77,22 +77,17 @@ def MapComponent(year):
         except Exception as e:
             print(f"圖層加入失敗: {e}")
             
-        # 4. 【關鍵修復】使用系統暫存區來生成 HTML
-        # 使用 tempfile 確保我們有權限寫入，且檔名不會衝突
+        # 4. 使用系統暫存區生成 HTML
         try:
             with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
                 temp_path = tmp.name
             
-            # 將地圖存入暫存路徑
             m.to_html(filename=temp_path)
             
-            # 讀取暫存檔內容
             with open(temp_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
                 
-            # (選用) 讀完後刪除暫存檔以節省空間
             os.remove(temp_path)
-            
             return html_content
             
         except Exception as e:
@@ -101,11 +96,13 @@ def MapComponent(year):
     # 使用 use_memo 緩存 HTML
     map_html = solara.use_memo(get_map_html, dependencies=[year])
 
-    # 5. 顯示
-    return solara.components.html.Iframe(
-        src_doc=map_html,
+    # 5. 【關鍵修正】使用正確的 Solara HTML Iframe 語法
+    # srcDoc 是 React 的屬性名稱，用來直接顯示 HTML 字串
+    return solara.HTML.iframe(
+        srcDoc=map_html,
         width="100%",
-        height="700px"
+        height="700px",
+        style={"border": "none"}
     )
 
 # ==========================================
@@ -116,7 +113,7 @@ def Page():
     with solara.Column(style={"width": "100%", "padding": "20px"}):
         
         solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
-        solara.Markdown("紅色區域代表優養化風險高，藍色區域則為低風險。請選擇年份以查看不同年度的狀況。")
+        solara.Markdown("紅色區域代表優養化風險高。")
         
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
             solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024)
