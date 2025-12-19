@@ -1,5 +1,5 @@
 import solara
-import leafmap.solara as leafmap
+import leafmap.leafmap as leafmap
 import ee
 import os
 import json
