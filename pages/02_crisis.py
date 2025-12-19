@@ -119,7 +119,13 @@ def Page():
 
         # --- 2. 優養化區塊 ---
         solara.Markdown("## 2. 海洋優養化指標")
-        
+        solara.Markdown("""
+                        ###優養化（Eutrophication）
+                        通常意味著水中的營養鹽過多，這會導致藻類爆發（Algae Bloom）。對於珊瑚礁來說，這是一個巨大的威脅，因為：
+                        競爭光線：過多的浮游藻類會讓海水變混濁，擋住陽光，共生藻無法行光合作用。
+                        空間競爭：大型藻類會長得比珊瑚快，直接覆蓋並「悶死」珊瑚。
+                        """)
+        solara.Markdown("為了監測澎湖海域的優養化情況，我們使用了 Sentinel-2 衛星影像，並計算了 NDCI（Normalized Difference Chlorophyll Index）指標。NDCI 是一種用於評估水體中葉綠素濃度的指標，葉綠素濃度高通常意味著水中營養鹽豐富，可能導致優養化現象。")
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
             solara.Markdown("透過 NDCI 指標分析澎湖海域葉綠素濃度，**紅色**代表優養化風險較高區域。")
             
@@ -137,7 +143,7 @@ def Page():
 
         # --- 3. 珊瑚礁生態系崩壞區塊 ---
         solara.Markdown("## 3. 珊瑚礁生態系崩壞")
-        solara.Markdown("等一下我再來寫這裡")
+        solara.Markdown("")
         solara.Markdown("---")
 
         # --- 4. 人類活動影響 ---
