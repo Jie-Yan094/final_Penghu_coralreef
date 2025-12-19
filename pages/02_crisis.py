@@ -38,19 +38,20 @@ selected_year = solara.reactive(2023)
 # ==========================================
 def get_map(year_val):
     # 定義澎湖的邊界 (南, 西, 北, 東)
-    # fit_bounds 是比 center 更強制的定位方式
+    # 這是最保險的定位方式
     bounds = ((23.1, 119.3), (23.8, 119.8))
     
+    # 建立地圖
     m = ipyleaflet.Map(
         center=[23.5, 119.5], 
-        zoom=11, # 稍微拉遠一點點確保看得到全貌
+        zoom=11, 
         scroll_wheel_zoom=True
     )
     
     # 加入圖層控制器
     m.add_control(ipyleaflet.LayersControl(position='topright'))
 
-    # 強制鎖定視角 (雙重保險)
+    # 【關鍵】強制設定地圖邊界，確保一定會跳轉到澎湖
     m.fit_bounds(bounds)
 
     roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
@@ -74,7 +75,7 @@ def get_map(year_val):
         image = collection.median().clip(roi)
         ndci = image.normalizedDifference(['B5', 'B4']).rename('NDCI')
 
-        # 3. 設定參數
+        # 3. 設定視覺化參數
         ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': ['blue', 'white', 'green', 'yellow', 'red']}
         rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
 
@@ -142,12 +143,10 @@ def Page():
 
         # 地圖容器
         with solara.Column(style={"width": "100%", "height": "650px", "border": "1px solid #ddd", "margin-top": "20px"}):
-            
-            # 【絕對關鍵】這裡加了 key，強迫 Solara 每次年份改變時，把舊地圖徹底銷毀
-            # 這能解決地圖 "卡在非洲" 或 "不更新" 的所有問題
-            with solara.Column(key=f"map-container-{selected_year.value}"):
-                m = get_map(selected_year.value)
-                m.element()
+            # 這裡拿掉了 key，因為 ipyleaflet 每次重新產生就會是新的物件
+            # 配合 fit_bounds 應該就能正確定位
+            m = get_map(selected_year.value)
+            m.element()
         
         # 色標
         with solara.Row(justify="center", style={"margin-top": "10px"}):
