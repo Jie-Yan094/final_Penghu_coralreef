@@ -125,10 +125,11 @@ def Page():
             solara.display(m)
 
         solara.Markdown("---")
-
+        
         # --- 3D 地形區塊 ---
         solara.Markdown("### 2. 地形 DEM 模型")
-        
+        solara.Markdown("好像還要一點說明不然直接出3D圖很奇怪，然後這張很奇怪我還在想為什麼會變這樣")
+
         with solara.Column(style={"width": "90%", "max-width": "1000px", "height": "700px"}):
             if fig_3d:
                 solara.FigurePlotly(fig_3d)
