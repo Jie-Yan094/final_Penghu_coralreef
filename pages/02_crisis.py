@@ -1,12 +1,12 @@
 import solara
-import leafmap.leafmap as leafmap  # 建議改用 leafmap.solara 以獲得更好的支援
+import leafmap.solara as leafmap
 import ee
 import os
 import json
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. GEE 驗證與初始化 (修正版)
+# 0. GEE 驗證與初始化
 # ==========================================
 try:
     # 嘗試從 Hugging Face Secret 讀取金鑰
@@ -15,7 +15,7 @@ try:
     if key_content:
         service_account_info = json.loads(key_content)
         
-        # 【關鍵修正】這裡加上 scopes，告訴 Google 我們要用 GEE
+        # 加入 scopes，確保有權限操作 Earth Engine
         creds = Credentials.from_service_account_info(
             service_account_info,
             scopes=['https://www.googleapis.com/auth/earthengine']
@@ -23,7 +23,7 @@ try:
         
         # 使用帶有正確 scope 的憑證進行初始化
         ee.Initialize(credentials=creds, project='ee-s1243037-0')
-        print("✅ 雲端環境：GEE 驗證成功！(Scope 設定完成)")
+        print("✅ 雲端環境：GEE 驗證成功！")
     else:
         # 本機測試用
         ee.Initialize(project='ee-s1243037-0')
@@ -35,7 +35,7 @@ except Exception as e:
 # 1. 變數與地圖類別定義
 # ==========================================
 
-# 定義年份變數 (Reactive)，讓它能控制地圖
+# 定義年份變數 (預設選 2025)
 selected_year = solara.reactive(2025)
 
 class EutrophicationMap(leafmap.Map):
@@ -59,14 +59,14 @@ class EutrophicationMap(leafmap.Map):
                       .median())
 
         # 計算 NDCI 優養化指標 (葉綠素)
-        # 公式: (B5 - B4) / (B5 + B4)
         ndci = collection.normalizedDifference(['B5', 'B4']).rename('NDCI')
 
         # 視覺化參數
+        palette = ['blue', 'white', 'green', 'yellow', 'red']
         ndci_vis = {
             'min': -0.1,
             'max': 0.5,
-            'palette': ['blue', 'white', 'green', 'yellow', 'red']
+            'palette': palette
         }
         
         rgb_vis = {
@@ -76,16 +76,19 @@ class EutrophicationMap(leafmap.Map):
         }
 
         # 加入圖層
-        # 1. 真實色彩 (當底圖參考)
         self.add_ee_layer(collection.clip(roi), rgb_vis, f"{year_val} 真實色彩")
-        # 2. NDCI 指標 (主要分析)
         self.add_ee_layer(ndci.clip(roi), ndci_vis, f"{year_val} 葉綠素(優養化)指標")
         
-        # 加入色標
-        self.add_colorbar(vis_params=ndci_vis, label="NDCI (葉綠素濃度)")
+        # 【修正重點】這裡明確指定 colors, vmin, vmax，避免報錯
+        self.add_colorbar(
+            colors=palette, 
+            vmin=-0.1, 
+            vmax=0.5, 
+            label="NDCI (葉綠素濃度)"
+        )
 
 # ==========================================
-# 2. 頁面組件 (你的主要架構)
+# 2. 頁面組件
 # ==========================================
 @solara.component
 def Page():
@@ -108,17 +111,16 @@ def Page():
 
         solara.Markdown("---")
 
-        # --- 2. 優養化區塊 (已整合) ---
+        # --- 2. 優養化區塊 ---
         solara.Markdown("## 2. 海洋優養化指標")
         
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
             solara.Markdown("透過 NDCI 指標分析澎湖海域葉綠素濃度，**紅色**代表優養化風險較高區域。")
             
-            # 這裡放入滑桿
+            # 範圍設定為 2015 - 2025
             solara.SliderInt(label="選擇年份", value=selected_year, min=2015, max=2025)
             
-            # 這裡放入地圖
-            # 使用 .element() 將 Leafmap 嵌入 Solara
+            # 顯示地圖
             EutrophicationMap(selected_year.value).element(
                 height="600px", 
                 width="100%"
@@ -128,18 +130,10 @@ def Page():
 
         # --- 3. 珊瑚礁生態系崩壞區塊 ---
         solara.Markdown("## 3. 珊瑚礁生態系崩壞")
-        solara.Markdown(
-                """
-                等一下我再來寫這裡
-                """
-            )
+        solara.Markdown("等一下我再來寫這裡")
         solara.Markdown("---")
 
         # --- 4. 人類活動影響 ---
         solara.Markdown("## 4. 人類活動影響-海洋垃圾")
-        solara.Markdown(
-                """
-                這裡也等一下我再來寫
-                """
-            )
+        solara.Markdown("這裡也等一下我再來寫")
         solara.Markdown("---")
