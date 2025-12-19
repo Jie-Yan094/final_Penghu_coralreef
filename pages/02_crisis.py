@@ -28,7 +28,7 @@ except Exception as e:
 # ==========================================
 # 1. 變數定義
 # ==========================================
-selected_year = solara.reactive(2024)
+selected_year = solara.reactive(2025)
 
 # ==========================================
 # 2. 地圖組件 (Colab 移植 Pro 版)
@@ -131,11 +131,42 @@ def MapComponent(year):
 # ==========================================
 @solara.component
 def Page():
-    with solara.Column(style={"width": "100%", "padding": "20px"}):
+    # --- 1. 海溫區塊 ---
+        solara.Markdown("## 1. 海溫分布變化")
+        solara.Markdown("---")
+    # --- 2. 優養化區塊 ---
+        solara.Markdown("## 2. 海洋優養化指標")
         
-        solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
-        solara.Markdown("夏季 (5月-9月) 平均狀態，使用 SCL 波段排除非水體干擾。")
+        # 文字說明區
+        with solara.Column(style={"max-width": "900px", "margin": "0 auto"}): # 讓文字區塊居中就好
+            solara.Markdown("""
+            ### 優養化（Eutrophication）
+            通常意味著水中的營養鹽過多，這會導致藻類爆發。對於珊瑚礁來說，這是一個巨大的威脅，因為：
+            * **競爭光線**：過多的浮游藻類會讓海水變混濁，擋住陽光。
+            * **空間競爭**：大型藻類會長得比珊瑚快，直接覆蓋珊瑚。
+            """)
+            
+            solara.Markdown("""
+            我們使用 Sentinel-2 衛星影像計算 **NDCI 指標** 來評估葉綠素濃度：
+            * 🔵 **藍色**：水質清澈。
+            * 🟢 **綠色**：正常浮游生物量。
+            * 🔴 **紅色**：優養化風險高。
+            """)
+
+        with solara.Column(style={"width": "100%", "padding": "20px"}):
         
-        with solara.Card("Sentinel-2 衛星葉綠素監測"):
-            solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024)
-            MapComponent(selected_year.value)
+            solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
+            solara.Markdown("夏季 (5月-9月) 平均狀態，使用 SCL 波段排除非水體干擾。")
+        
+            with solara.Card("Sentinel-2 衛星葉綠素監測"):
+                solara.SliderInt(label="選擇年份", value=selected_year, min=2015, max=2025)
+                MapComponent(selected_year.value)
+        solara.Markdown("---")
+    # --- 3. 珊瑚礁生態系崩壞區塊 ---
+        solara.Markdown("## 3. 珊瑚礁生態系崩壞")
+        solara.Markdown("預留空間")
+        solara.Markdown("---")
+    # --- 4. 人類活動影響區塊 ---
+        solara.Markdown("## 4. 人類活動影響")
+        solara.Markdown("預留空間")
+        solara.Markdown("---")
