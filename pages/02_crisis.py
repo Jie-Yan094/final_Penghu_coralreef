@@ -208,18 +208,40 @@ def Page():
                 # 呼叫優養化地圖組件
                 NDCIMap(selected_year.value)
         
-        # ----------------------------------------------------
+# ----------------------------------------------------
         # 3. 珊瑚礁生態系崩壞
         # ----------------------------------------------------
         with solara.Column(style={"max-width": "900px", "width": "100%", "padding-top": "40px"}):
             solara.Markdown("---")
             solara.Markdown("## 3. 珊瑚礁生態系崩壞：棘冠海星的威脅")
             
-            solara.Markdown("""
-            ### 🌊 好餓好餓的珊瑚礁大胃王--棘冠海星 (Crown-of-thorns Starfish) 
-            近年來，澎湖海域傳出**棘冠海星**（俗稱魔鬼海星）異常增生的警訊。
-            **澎湖海域現況**：近年來，除了**七美**海域外，南方四島國家公園範圍內的**東吉、西吉、東嶼坪、西嶼坪**等地區也觀察到棘冠海星數量激增，對當地珊瑚礁造成嚴重威脅。
-            """)
+            # 🔥 這裡使用你要求的「左圖右文」排版
+            image_url = "https://raw.githubusercontent.com/Jie-Yan094/final_Penghu_coralreef/main/starfish.jpg"
+            
+            with solara.Row(gap="24px", style={"flex-wrap": "wrap", "align-items": "center"}):
+                
+                # 左邊：圖片區塊 (使用你喜歡的卡片樣式)
+                with solara.Div(style={
+                    "flex": "1 1 400px", # 基礎寬度 400px，可伸縮
+                    "min-width": "300px",
+                    "overflow": "hidden",
+                    "border-radius": "12px", # 圓角
+                    "box-shadow": "0 4px 12px rgba(0, 0, 0, 0.15)", # 陰影
+                    "text-align": "center",
+                    "padding": "0", # 圖片滿版好看一點，或者設 padding 20px
+                    "background-color": "#ffffff"
+                }):
+                    # 寬度設為 100% 讓它自適應容器
+                    solara.Image(image_url, width="100%")
+                
+                # 右邊：文字區塊
+                with solara.Div(style={"flex": "1 1 400px", "min-width": "300px"}):
+                    solara.Markdown("""
+                    ### 🌊 好餓好餓的珊瑚礁大胃王--棘冠海星(Crown-of-thorns Starfish)
+                    近年來，澎湖海域傳出**棘冠海星**（俗稱魔鬼海星）異常增生的警訊。這種海星以珊瑚為食，當數量過多時，會對珊瑚礁生態系造成嚴重破壞，導致珊瑚覆蓋率大幅下降，生態平衡面臨威脅。
+                    **⚠️ 澎湖海域現況**：
+                    除了**七美**海域外，南方四島國家公園範圍內的**東吉、西吉、東嶼坪、西嶼坪**等地區也觀察到棘冠海星數量激增，對當地珊瑚礁造成嚴重威脅。
+                    """)
             
         # --- 地圖 B：棘冠海星警戒區 (獨立顯示) ---
         with solara.Column(style={"width": "100%", "padding-top": "10px"}):
