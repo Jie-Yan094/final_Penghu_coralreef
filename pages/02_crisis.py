@@ -1,9 +1,8 @@
 import solara
-import geemap.foliumap as geemap
+import geemap  # 【修改 1】改用 geemap，它對 GEE 的支援度最好
 import ee
 import os
 import json
-import tempfile
 from google.oauth2.service_account import Credentials
 
 # ==========================================
@@ -28,145 +27,123 @@ except Exception as e:
 # ==========================================
 # 1. 變數定義
 # ==========================================
-selected_year = solara.reactive(2025)
+selected_year = solara.reactive(2024)
 
 # ==========================================
-# 2. 地圖組件 (Colab 移植 Pro 版)
+# 2. 地圖生產函數 (使用 geemap 優化版)
 # ==========================================
-@solara.component
-def MapComponent(year):
+def get_final_map(year_val):
+    # 【修改 2】使用 geemap.Map
+    m = geemap.Map(center=[23.5, 119.5], zoom=11)
+    # 設定底圖，HYBRID 對於觀察沿岸特徵比較清楚
+    m.add_basemap("HYBRID")
+
+    roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
+    start_date = f'{year_val}-01-01'
+    end_date = f'{year_val}-12-31'
     
-    def get_map_html():
-        # 1. 初始化地圖 (Folium)
-        m = geemap.Map(center=[23.5, 119.5], zoom=11)
+    # 獲取影像集合
+    collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                  .filterBounds(roi)
+                  .filterDate(start_date, end_date)
+                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+                  .median()
+                  .clip(roi)) # 在這裡先 Clip，後續計算比較乾淨
+
+    # 計算 NDCI (Normalized Difference Chlorophyll Index)
+    # 公式: (RedEdge1 - Red) / (RedEdge1 + Red) -> (B5 - B4) / (B5 + B4)
+    ndci = collection.normalizedDifference(['B5', 'B4']).rename('NDCI')
+
+    # 【優化】簡單的水體遮罩 (選擇性)：利用 NDWI 把陸地遮掉，讓 NDCI 只顯示在海面上
+    # NDWI = (Green - NIR) / (Green + NIR) -> (B3 - B8) / (B3 + B8)
+    ndwi = collection.normalizedDifference(['B3', 'B8'])
+    water_mask = ndwi.gt(0) # NDWI > 0 視為水體
+    ndci_masked = ndci.updateMask(water_mask)
+
+    # 視覺化參數 (使用 Hex code 比較保險)
+    # 藍色(低葉綠素) -> 白色 -> 綠色 -> 黃色 -> 紅色(高葉綠素/優養化)
+    palette = ['#0000ff', '#ffffff', '#00ff00', '#ffff00', '#ff0000']
+    
+    ndci_vis = {
+        'min': -0.1, 
+        'max': 0.5, 
+        'palette': palette
+    }
+    
+    rgb_vis = {
+        'min': 0, 
+        'max': 3000, 
+        'bands': ['B4', 'B3', 'B2']
+    }
+
+    try:
+        # 【修改 3】使用 geemap 的 addLayer
+        m.addLayer(collection, rgb_vis, f"{year_val} 真實色彩 (RGB)")
+        m.addLayer(ndci_masked, ndci_vis, f"{year_val} 葉綠素指標 (NDCI)")
         
-        # 2. 定義 ROI (使用您 Colab 的精確座標)
-        roi = ee.Geometry.Rectangle([119.2741441721767, 23.169481136848866, 119.81144310766382, 23.87924197009108])
-
-        # 3. 定義時間：鎖定在該年份的「5月到9月」 (夏季藻類好發期)
-        start_date = f'{year}-05-01'
-        end_date = f'{year}-09-30'
-
-        # 4. 定義 SCL 去雲函式 (移植自您的 Colab)
-        def mask_s2_clouds_scl(image):
-            scl = image.select('SCL')
-            # 只保留數值為 6 (Water) 的像素
-            mask = scl.eq(6)
-            return image.updateMask(mask).divide(10000)
-
-        # 5. 定義指數計算函式
-        def add_indices(image):
-            ndci = image.normalizedDifference(['B5', 'B4']).rename('NDCI')
-            return image.addBands(ndci)
-
-        # 6. 影像集合處理 (邏輯完全比照 Colab)
-        s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-              .filterDate(start_date, end_date)
-              .filterBounds(roi)
-              .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)) # 初步過濾
-              .map(mask_s2_clouds_scl) # 精細去雲 (只留水體)
-              .map(add_indices))       # 計算 NDCI
-
-        # 取中位數合成 (因為已經限定夏季，這代表夏季平均狀態)
-        image_median = s2.median().clip(roi)
-
-        # 7. 視覺化參數 (比照 Colab 設定)
-        # 注意：Colab 的顏色代碼沒加 #，這裡補上 # 以確保網頁渲染正確
-        ndci_vis = {
-            'min': -0.05, 
-            'max': 0.15,
-            'palette': ['#0011ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000']
-        }
+        # 【修改 4】加入 Colorbar (geemap 的寫法)
+        m.add_colorbar_branca(
+            colors=palette, 
+            vmin=-0.1, 
+            vmax=0.5, 
+            label="NDCI 葉綠素濃度 (優養化程度)"
+        )
         
-        # 8. 加入圖層
-        try:
-            # 真實色彩 (底圖)
-            m.addLayer(image_median, {'bands': ['B4', 'B3', 'B2'], 'min': 0, 'max': 0.3}, 'True Color')
-            
-            # NDCI 分析圖層
-            m.addLayer(image_median.select('NDCI'), ndci_vis, 'NDCI (Cleaned)')
-            
-            # Colorbar
-            m.add_colorbar(
-                colors=['#0011ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000'], 
-                vmin=-0.05, 
-                vmax=0.15, 
-                label="NDCI Chlorophyll Index"
-            )
-        except Exception as e:
-            print(f"圖層加入失敗: {e}")
-            
-        # 9. 生成 HTML (使用暫存檔解決權限問題)
-        try:
-            with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
-                temp_path = tmp.name
-            
-            m.to_html(filename=temp_path)
-            
-            with open(temp_path, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            
-            os.remove(temp_path)
-            return html_content
-            
-        except Exception as e:
-            return f"<div>地圖生成錯誤: {str(e)}</div>"
-
-    # 使用 use_memo
-    map_html = solara.use_memo(get_map_html, dependencies=[year])
-
-    # 10. 顯示 Iframe
-    return solara.HTML(
-        tag="iframe",
-        attributes={
-            "srcDoc": map_html,
-            "width": "100%",
-            "height": "700px",
-            "style": "border: none; display: block;" 
-        }
-    )
+        # 自動縮放到 ROI
+        m.centerObject(roi, 11)
+        
+    except Exception as e:
+        print(f"圖層載入警告: {e}")
+    
+    return m
 
 # ==========================================
 # 3. 頁面組件
 # ==========================================
 @solara.component
 def Page():
-    # --- 1. 海溫區塊 ---
+    with solara.Column(style={"width": "100%", "padding": "20px"}):
+        
+        with solara.Column(align="center"):
+            solara.Markdown("## 危害澎湖珊瑚礁之各項因子")
+            with solara.Column(style={"max-width": "800px"}):
+                solara.Markdown(
+                    """
+                    珊瑚礁生態系統面臨多重威脅，包括氣候變遷引發的海水溫度上升、海洋酸化、海水優樣化，以及人類活動如過度捕撈、污染和沿海開發等。
+                    """
+                )
+            solara.Markdown("---")
+
         solara.Markdown("## 1. 海溫分布變化")
         solara.Markdown("---")
-    # --- 2. 優養化區塊 ---
-        solara.Markdown("## 2. 海洋優養化指標")
+
+        solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
         
-        # 文字說明區
-        with solara.Column(style={"max-width": "900px", "margin": "0 auto"}): # 讓文字區塊居中就好
+        with solara.Column(style={"max-width": "900px", "margin": "0 auto"}):
             solara.Markdown("""
             ### 優養化（Eutrophication）
-            通常意味著水中的營養鹽過多，這會導致藻類爆發。對於珊瑚礁來說，這是一個巨大的威脅，因為：
-            * **競爭光線**：過多的浮游藻類會讓海水變混濁，擋住陽光。
-            * **空間競爭**：大型藻類會長得比珊瑚快，直接覆蓋珊瑚。
-            """)
-            
-            solara.Markdown("""
-            我們使用 Sentinel-2 衛星影像計算 **NDCI 指標** 來評估葉綠素濃度：
-            * 🔵 **藍色**：水質清澈。
+            我們使用 Sentinel-2 衛星影像計算 **NDCI 指標** (Normalized Difference Chlorophyll Index) 來評估葉綠素濃度：
+            * 🔵 **藍色**：水質清澈 (低葉綠素)。
             * 🟢 **綠色**：正常浮游生物量。
-            * 🔴 **紅色**：優養化風險高。
+            * 🔴 **紅色**：優養化風險高 (藻類爆發)。
+            *(註：已自動遮罩陸地範圍)*
             """)
+        
+        # 地圖區塊
+        with solara.Card("Sentinel-2 衛星葉綠素監測"):
+            solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024) 
+            # Sentinel-2 資料通常從 2015 後半開始，建議 slider 從 2016 或 2019 開始比較完整
+            
+            # 呼叫地圖函數
+            m = get_final_map(selected_year.value)
+            
+            # 顯示地圖
+            # geemap 物件在 solara 中也是 ipywidget，直接用 element() 渲染
+            m.element(height="700px")
 
-        with solara.Column(style={"width": "100%", "padding": "20px"}):
-        
-            solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
-            solara.Markdown("夏季 (5月-9月) 平均狀態，使用 SCL 波段排除非水體干擾。")
-        
-            with solara.Card("Sentinel-2 衛星葉綠素監測"):
-                solara.SliderInt(label="選擇年份", value=selected_year, min=2015, max=2025)
-                MapComponent(selected_year.value)
         solara.Markdown("---")
-    # --- 3. 珊瑚礁生態系崩壞區塊 ---
         solara.Markdown("## 3. 珊瑚礁生態系崩壞")
         solara.Markdown("預留空間")
         solara.Markdown("---")
-    # --- 4. 人類活動影響區塊 ---
         solara.Markdown("## 4. 人類活動影響")
         solara.Markdown("預留空間")
-        solara.Markdown("---")
