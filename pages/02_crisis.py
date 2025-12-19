@@ -1,6 +1,6 @@
 import solara
-import ipyleaflet  # 改用原生的 ipyleaflet
-import geemap      # 僅用於 GEE 計算輔助
+import ipyleaflet  # 核心地圖庫
+import geemap      # GEE 輔助工具
 import ee
 import os
 import json
@@ -31,23 +31,30 @@ except Exception as e:
 selected_year = solara.reactive(2024)
 
 # ==========================================
-# 2. 地圖組件 (純淨穩定版)
+# 2. 地圖組件 (修正語法穩定版)
 # ==========================================
 @solara.component
 def MapComponent(year):
-    # A. 初始化地圖 (使用 ipyleaflet，完全無工具列負擔)
+    # A. 初始化地圖
     # --------------------------------------------------
     def init_map():
+        # 直接在參數中設定底圖，這是最穩定的寫法
         m = ipyleaflet.Map(
             center=[23.5, 119.5],
             zoom=11,
+            basemap=ipyleaflet.basemaps.Esri.WorldImagery, # 設定衛星底圖
             scroll_wheel_zoom=True,
             layout={'height': '700px'}
         )
-        # 加入混合底圖 (Hybrid)
-        m.add_layer(ipyleaflet.Basemap.to_layer(ipyleaflet.basemaps.Esri.WorldImagery))
-        # 疊加一點地名標籤 (Reference)
-        m.add_layer(ipyleaflet.Basemap.to_layer(ipyleaflet.basemaps.CartoDB.PositronOnlyLabels))
+        
+        # 疊加地名標籤 (選用)
+        # 檢查是否有標籤圖層可用，若無則跳過避免報錯
+        try:
+            labels = ipyleaflet.basemaps.CartoDB.PositronOnlyLabels
+            m.add_layer(labels)
+        except Exception:
+            pass
+            
         return m
 
     # 使用 use_memo 確保地圖只建立一次
@@ -56,9 +63,11 @@ def MapComponent(year):
     # B. 更新圖層邏輯
     # --------------------------------------------------
     def update_layers():
-        # 1. 移除舊的 GEE 圖層 (保留底圖)
-        # ipyleaflet 的 layers 是一個 tuple，我們保留前兩層(底圖+標籤)
+        # 1. 移除舊的 GEE 圖層
+        # 假設前兩層是底圖(Base)和標籤(Label)，我們保留它們
+        # 具體保留幾層視情況而定，這裡設定保留前 2 層比較保險
         if len(m.layers) > 2:
+            # 重新指定 layers tuple，切片保留前兩層
             m.layers = m.layers[:2]
 
         # 2. 定義 ROI 與 時間
@@ -86,9 +95,9 @@ def MapComponent(year):
         palette = ['#0000ff', '#ffffff', '#00ff00', '#ffff00', '#ff0000']
         ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette}
         
-        # 4. 轉換並加入圖層 (關鍵步驟)
-        # 使用 geemap.ee_tile_layer 將 GEE 物件轉為 ipyleaflet 圖層
+        # 4. 轉換並加入圖層
         try:
+            # 使用 geemap 的工具函數產生 ipyleaflet 圖層物件
             layer = geemap.ee_tile_layer(ndci_masked, ndci_vis, name=f"{year} NDCI")
             m.add_layer(layer)
         except Exception as e:
@@ -103,7 +112,7 @@ def MapComponent(year):
         # 顯示地圖
         m.element()
         
-        # 自定義 HTML 圖例 (比 geemap widget 更穩定)
+        # 自定義 HTML 圖例 (浮動視窗)
         with solara.Card(style={"position": "absolute", "bottom": "20px", "right": "20px", "z-index": "1000", "width": "250px", "background-color": "rgba(255,255,255,0.8)"}):
             solara.Markdown("**NDCI 葉綠素濃度**")
             # CSS 漸層色條
