@@ -1,5 +1,6 @@
 import solara
-import geemap
+import ipyleaflet  # 改用原生的 ipyleaflet
+import geemap      # 僅用於 GEE 計算輔助
 import ee
 import os
 import json
@@ -30,53 +31,42 @@ except Exception as e:
 selected_year = solara.reactive(2024)
 
 # ==========================================
-# 2. 地圖組件 (穩定版)
+# 2. 地圖組件 (純淨穩定版)
 # ==========================================
 @solara.component
 def MapComponent(year):
-    # --- A. 初始化地圖 (只執行一次) ---
-    def init_map_once():
-        # 【關鍵修正】關閉 toolbar_ctrl 和 draw_ctrl 以避免 Widget Closed Error
-        m = geemap.Map(
-            center=[23.5, 119.5], 
-            zoom=11, 
-            height="700px",
-            toolbar_ctrl=False,  # 關閉工具列 (解決報錯的核心)
-            draw_ctrl=False,     # 關閉繪圖工具
-            data_ctrl=False      # 關閉資料工具
+    # A. 初始化地圖 (使用 ipyleaflet，完全無工具列負擔)
+    # --------------------------------------------------
+    def init_map():
+        m = ipyleaflet.Map(
+            center=[23.5, 119.5],
+            zoom=11,
+            scroll_wheel_zoom=True,
+            layout={'height': '700px'}
         )
-        m.add_basemap("HYBRID")
-        
-        # 【優化】Colorbar 是固定的，在這裡加一次就好，不要在迴圈裡重複加
-        palette = ['#0000ff', '#ffffff', '#00ff00', '#ffff00', '#ff0000']
-        
-        # 使用 branca colorbar (HTML based) 比較穩定
-        m.add_colorbar_branca(
-            colors=palette, 
-            vmin=-0.1, 
-            vmax=0.5, 
-            label="NDCI 葉綠素濃度 (優養化程度)"
-        )
+        # 加入混合底圖 (Hybrid)
+        m.add_layer(ipyleaflet.Basemap.to_layer(ipyleaflet.basemaps.Esri.WorldImagery))
+        # 疊加一點地名標籤 (Reference)
+        m.add_layer(ipyleaflet.Basemap.to_layer(ipyleaflet.basemaps.CartoDB.PositronOnlyLabels))
         return m
 
-    # 使用 use_memo 確保地圖物件不會被重複建立
-    m = solara.use_memo(init_map_once, dependencies=[])
+    # 使用 use_memo 確保地圖只建立一次
+    m = solara.use_memo(init_map, dependencies=[])
 
-    # --- B. 更新圖層 (當 year 改變時執行) ---
+    # B. 更新圖層邏輯
+    # --------------------------------------------------
     def update_layers():
-        if m is None: return
-        
-        # 1. 清理舊圖層
-        # m.layers[0] 是底圖，我們保留它，移除後面的所有疊加層
-        if len(m.layers) > 1:
-            m.layers = m.layers[:1]
-        
+        # 1. 移除舊的 GEE 圖層 (保留底圖)
+        # ipyleaflet 的 layers 是一個 tuple，我們保留前兩層(底圖+標籤)
+        if len(m.layers) > 2:
+            m.layers = m.layers[:2]
+
         # 2. 定義 ROI 與 時間
         roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
         start_date = f'{year}-01-01'
         end_date = f'{year}-12-31'
-        
-        # 3. 獲取影像與計算
+
+        # 3. GEE 運算
         collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                       .filterBounds(roi)
                       .filterDate(start_date, end_date)
@@ -84,6 +74,7 @@ def MapComponent(year):
                       .median()
                       .clip(roi))
 
+        # 計算 NDCI
         ndci = collection.normalizedDifference(['B5', 'B4']).rename('NDCI')
         
         # 水體遮罩
@@ -94,21 +85,33 @@ def MapComponent(year):
         # 視覺參數
         palette = ['#0000ff', '#ffffff', '#00ff00', '#ffff00', '#ff0000']
         ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette}
-        rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
         
+        # 4. 轉換並加入圖層 (關鍵步驟)
+        # 使用 geemap.ee_tile_layer 將 GEE 物件轉為 ipyleaflet 圖層
         try:
-            # 4. 加入新圖層
-            m.addLayer(collection, rgb_vis, f"{year} 真實色彩")
-            m.addLayer(ndci_masked, ndci_vis, f"{year} 葉綠素指標")
-            
+            layer = geemap.ee_tile_layer(ndci_masked, ndci_vis, name=f"{year} NDCI")
+            m.add_layer(layer)
         except Exception as e:
-            print(f"圖層更新錯誤: {e}")
+            print(f"圖層載入失敗: {e}")
 
-    # 註冊副作用，當 year 變動時觸發 update_layers
+    # 監聽年份變化
     solara.use_effect(update_layers, [year])
 
-    # 回傳地圖元素
-    return m.element(height="700px")
+    # C. 回傳地圖與自定義圖例
+    # --------------------------------------------------
+    with solara.Column():
+        # 顯示地圖
+        m.element()
+        
+        # 自定義 HTML 圖例 (比 geemap widget 更穩定)
+        with solara.Card(style={"position": "absolute", "bottom": "20px", "right": "20px", "z-index": "1000", "width": "250px", "background-color": "rgba(255,255,255,0.8)"}):
+            solara.Markdown("**NDCI 葉綠素濃度**")
+            # CSS 漸層色條
+            solara.HTML(tag="div", style="height: 20px; width: 100%; background: linear-gradient(to right, blue, white, green, yellow, red); margin-bottom: 5px; border: 1px solid #ccc;")
+            # 數值標籤
+            with solara.Row(justify="space-between"):
+                solara.Text("-0.1 (清澈)", style="font-size: 12px")
+                solara.Text("0.5 (優養)", style="font-size: 12px")
 
 # ==========================================
 # 3. 頁面組件
@@ -135,15 +138,14 @@ def Page():
         with solara.Column(style={"max-width": "900px", "margin": "0 auto"}):
             solara.Markdown("""
             ### 優養化（Eutrophication）
-            我們使用 Sentinel-2 衛星影像計算 **NDCI 指標** 來評估葉綠素濃度：
-            * 🔵 **藍色**：水質清澈。
-            * 🔴 **紅色**：優養化風險高。
+            我們使用 Sentinel-2 衛星影像計算 **NDCI 指標** 來評估葉綠素濃度。
+            (紅色區域代表潛在的藻類爆發風險)
             """)
         
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
             solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024)
             
-            # 呼叫地圖組件
+            # 載入地圖組件
             MapComponent(selected_year.value)
 
         solara.Markdown("---")
