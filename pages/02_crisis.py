@@ -1,5 +1,5 @@
 import solara
-import ipyleaflet  # 【核心改變】改用最原生的 ipyleaflet，避開 geemap 工具列錯誤
+import ipyleaflet
 import ee
 import os
 import json
@@ -34,23 +34,25 @@ except Exception as e:
 selected_year = solara.reactive(2023)
 
 # ==========================================
-# 2. 地圖生產函數 (原生 ipyleaflet 模式)
+# 2. 地圖生產函數
 # ==========================================
 def get_map(year_val):
-    # 建立原生 ipyleaflet 地圖 (沒有 geemap 那些複雜的工具列，所以不會崩潰)
+    # 定義澎湖的邊界 (南, 西, 北, 東)
+    # fit_bounds 是比 center 更強制的定位方式
+    bounds = ((23.1, 119.3), (23.8, 119.8))
+    
     m = ipyleaflet.Map(
         center=[23.5, 119.5], 
-        zoom=12,
+        zoom=11, # 稍微拉遠一點點確保看得到全貌
         scroll_wheel_zoom=True
     )
     
-    # 加入圖層控制器 (這是一個安全的內建元件)
+    # 加入圖層控制器
     m.add_control(ipyleaflet.LayersControl(position='topright'))
 
-    # 定義基本底圖 (Hybrid)
-    # 這裡我們手動加一個 Google 衛星底圖，或者使用預設的
-    # ipyleaflet 預設是 OSM，我們先用 OSM 確認地圖能跑出來
-    
+    # 強制鎖定視角 (雙重保險)
+    m.fit_bounds(bounds)
+
     roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
     start_date = f'{year_val}-01-01'
     end_date = f'{year_val}-12-31'
@@ -77,24 +79,22 @@ def get_map(year_val):
         rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
 
         # ======================================================
-        # 手動取得 MapID 並建立 ipyleaflet 圖層
+        # 手動取得 MapID
         # ======================================================
         
-        # A. 真實色彩
+        # A. 真實色彩 (底圖)
         map_id_rgb = image.getMapId(rgb_vis)
-        tile_url_rgb = map_id_rgb['tile_fetcher'].url_format
         layer_rgb = ipyleaflet.TileLayer(
-            url=tile_url_rgb, 
+            url=map_id_rgb['tile_fetcher'].url_format, 
             name=f"{year_val} 真實色彩",
             attribution="Google Earth Engine"
         )
         m.add_layer(layer_rgb)
 
-        # B. NDCI 優養化指標
+        # B. NDCI 優養化指標 (上層)
         map_id_ndci = ndci.getMapId(ndci_vis)
-        tile_url_ndci = map_id_ndci['tile_fetcher'].url_format
         layer_ndci = ipyleaflet.TileLayer(
-            url=tile_url_ndci, 
+            url=map_id_ndci['tile_fetcher'].url_format, 
             name=f"{year_val} NDCI 指標",
             attribution="Google Earth Engine"
         )
@@ -142,10 +142,14 @@ def Page():
 
         # 地圖容器
         with solara.Column(style={"width": "100%", "height": "650px", "border": "1px solid #ddd", "margin-top": "20px"}):
-            m = get_map(selected_year.value)
-            m.element()
+            
+            # 【絕對關鍵】這裡加了 key，強迫 Solara 每次年份改變時，把舊地圖徹底銷毀
+            # 這能解決地圖 "卡在非洲" 或 "不更新" 的所有問題
+            with solara.Column(key=f"map-container-{selected_year.value}"):
+                m = get_map(selected_year.value)
+                m.element()
         
-        # 色標 (因為 ipyleaflet 沒有內建色標，我們用文字或圖片簡單說明)
+        # 色標
         with solara.Row(justify="center", style={"margin-top": "10px"}):
             solara.Markdown("**色標說明：** 🔵 藍色(低濃度/清澈) ➝ ⚪ 白色 ➝ 🟢 綠色 ➝ 🟡 黃色 ➝ 🔴 紅色(高濃度/優養化)")
             
