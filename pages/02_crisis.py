@@ -231,7 +231,7 @@ def Page():
         with solara.Column(style={"max-width": "900px", "width": "100%", "padding-top": "20px"}):
             with solara.Card("🔍 認識棘冠海星"):
                 solara.Markdown("""
-                *棘冠海星是珊瑚礁生態系中的一員，但當牠們數量失控時，便會成為生態殺手。
+                * 棘冠海星是珊瑚礁生態系中的一員，但當牠們數量失控時，便會成為生態殺手。
                 * **🍽️ 專吃珊瑚**：牠們喜愛攝食成長快速的石珊瑚，會將胃翻出體外直接消化珊瑚蟲，留下一片慘白的珊瑚骨骼。
                 * **📈 食量驚人**：一隻成體在一年內，最多可吞噬高達 **6 平方公尺** 的珊瑚。
                 * **⚠️ 具毒性**：體表布滿尖銳的毒棘，人類若不慎觸碰可能會中毒受傷。
@@ -294,8 +294,8 @@ def Page():
             solara.Markdown("## 5. 參考資料")
             solara.Markdown(
             """
-            *1.開放博物館．棘寥之海：從棘冠海星看見生態的臨界點．https://openmuseum.tw/muse/exhibition/403675c2280b4d08a8c7c19ab71f51e1#imgs-gghuozn6go
-            *2.海巡署全球資訊網．澎湖西吉島海域棘冠海星大爆發事件與控管．https://www.cga.gov.tw/GipOpen/wSite/public/Attachment/f1294389984406.pdf
-            *3.自然保育與環境資訊基金會．2024 澎湖南方四島-東西嶼坪珊瑚礁體檢成果報告．https://tnf.org.tw/archives/35245
+            * 1.開放博物館．棘寥之海：從棘冠海星看見生態的臨界點．https://openmuseum.tw/muse/exhibition/403675c2280b4d08a8c7c19ab71f51e1#imgs-gghuozn6go
+            * 2.海巡署全球資訊網．澎湖西吉島海域棘冠海星大爆發事件與控管．https://www.cga.gov.tw/GipOpen/wSite/public/Attachment/f1294389984406.pdf
+            * 3.自然保育與環境資訊基金會．2024 澎湖南方四島-東西嶼坪珊瑚礁體檢成果報告．https://tnf.org.tw/archives/35245
             """
             )
