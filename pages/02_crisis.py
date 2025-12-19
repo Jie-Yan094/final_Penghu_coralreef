@@ -39,9 +39,15 @@ except Exception as e:
 selected_year = solara.reactive(2025)
 
 class EutrophicationMap(leafmap.Map):
-    def __init__(self, year_val):
-        # 設定地圖中心為澎湖
-        super().__init__(center=[23.5, 119.5], zoom=11)
+    # 【關鍵修正】這裡加上 **kwargs 以接收 height 和 width
+    def __init__(self, year_val, **kwargs):
+        
+        # 設定預設高度 (如果 kwargs 裡沒傳 height，就預設 600px)
+        kwargs['height'] = kwargs.get('height', '600px')
+        
+        # 將 kwargs (包含 height/width) 傳給父類別 leafmap.Map
+        super().__init__(center=[23.5, 119.5], zoom=11, **kwargs)
+        
         self.add_basemap("HYBRID")
 
         # 定義澎湖感興趣範圍 (ROI)
@@ -79,7 +85,7 @@ class EutrophicationMap(leafmap.Map):
         self.add_ee_layer(collection.clip(roi), rgb_vis, f"{year_val} 真實色彩")
         self.add_ee_layer(ndci.clip(roi), ndci_vis, f"{year_val} 葉綠素(優養化)指標")
         
-        # 【修正重點】這裡明確指定 colors, vmin, vmax，避免報錯
+        # 明確指定 colors, vmin, vmax，避免報錯
         self.add_colorbar(
             colors=palette, 
             vmin=-0.1, 
@@ -121,6 +127,7 @@ def Page():
             solara.SliderInt(label="選擇年份", value=selected_year, min=2015, max=2025)
             
             # 顯示地圖
+            # 現在這裡傳入的 height 和 width 會被 __init__ 裡的 **kwargs 成功接收
             EutrophicationMap(selected_year.value).element(
                 height="600px", 
                 width="100%"
