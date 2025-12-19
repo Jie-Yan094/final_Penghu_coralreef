@@ -121,4 +121,23 @@ def Page():
             with solara.Column(style={"max-width": "800px"}):
                 solara.Markdown("## 危害澎湖珊瑚礁之各項因子")
                 solara.Markdown("---")
-                solara.Markdown("## 2. 海洋優養化
+                solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
+                
+                if error_msg.value:
+                    solara.Error(error_msg.value)
+                if info_msg.value:
+                    solara.Success(info_msg.value)
+
+        solara.Markdown("### Sentinel-2 衛星監測地圖")
+        
+        with solara.Row(justify="center"):
+            with solara.Column(style={"width": "300px"}):
+                solara.SliderInt(label="選擇年份", value=selected_year, min=2017, max=2024)
+
+        # 地圖容器
+        with solara.Column(style={"width": "100%", "height": "650px", "border": "1px solid #ddd", "margin-top": "20px"}):
+            m = get_map(selected_year.value)
+            m.element()
+            
+        with solara.Row(justify="center", style={"margin-top": "20px"}):
+             solara.Markdown("---")
