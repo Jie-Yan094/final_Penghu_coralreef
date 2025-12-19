@@ -1,6 +1,6 @@
 import solara
-import ipyleaflet  # 核心地圖庫
-import geemap      # GEE 輔助工具
+import ipyleaflet
+import geemap
 import ee
 import os
 import json
@@ -31,51 +31,59 @@ except Exception as e:
 selected_year = solara.reactive(2024)
 
 # ==========================================
-# 2. 地圖組件 (修正語法穩定版)
+# 2. 地圖組件 (視角強制修正版)
 # ==========================================
 @solara.component
 def MapComponent(year):
-    # A. 初始化地圖
-    # --------------------------------------------------
+    # --- A. 初始化地圖 ---
     def init_map():
-        # 直接在參數中設定底圖，這是最穩定的寫法
+        # 建立地圖實例
         m = ipyleaflet.Map(
-            center=[23.5, 119.5],
-            zoom=11,
-            basemap=ipyleaflet.basemaps.Esri.WorldImagery, # 設定衛星底圖
+            center=[23.5, 119.5],  # 初始中心
+            zoom=11,               # 初始縮放
             scroll_wheel_zoom=True,
             layout={'height': '700px'}
         )
         
-        # 疊加地名標籤 (選用)
-        # 檢查是否有標籤圖層可用，若無則跳過避免報錯
+        # 加入衛星底圖 (使用最穩定的加入方式)
         try:
-            labels = ipyleaflet.basemaps.CartoDB.PositronOnlyLabels
-            m.add_layer(labels)
-        except Exception:
-            pass
+            # 嘗試加入 ESRI 衛星圖
+            esri_layer = ipyleaflet.Basemap.to_layer(ipyleaflet.basemaps.Esri.WorldImagery)
+            m.add_layer(esri_layer)
             
+            # 嘗試加入地名標籤
+            label_layer = ipyleaflet.Basemap.to_layer(ipyleaflet.basemaps.CartoDB.PositronOnlyLabels)
+            m.add_layer(label_layer)
+        except:
+            # 如果失敗，至少加入一個標準底圖
+            m.add_layer(ipyleaflet.TileLayer(url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"))
+
         return m
 
-    # 使用 use_memo 確保地圖只建立一次
+    # 使用 use_memo 鎖定地圖物件，防止閃退
     m = solara.use_memo(init_map, dependencies=[])
 
-    # B. 更新圖層邏輯
-    # --------------------------------------------------
+    # --- B. 定義「強制回到澎湖」的動作 ---
+    def fly_to_penghu():
+        m.center = [23.5, 119.5]
+        m.zoom = 11
+
+    # --- C. 更新圖層與視角 ---
     def update_layers():
-        # 1. 移除舊的 GEE 圖層
-        # 假設前兩層是底圖(Base)和標籤(Label)，我們保留它們
-        # 具體保留幾層視情況而定，這裡設定保留前 2 層比較保險
+        # 1. 強制設定視角 (解決地圖跑掉、中心錯誤的關鍵!)
+        # 每次年份改變或初始化時，都強制把鏡頭拉回澎湖
+        fly_to_penghu()
+
+        # 2. 清理舊圖層 (保留底圖)
+        # 假設前兩層是底圖與標籤，我們從 index 2 開始切掉
         if len(m.layers) > 2:
-            # 重新指定 layers tuple，切片保留前兩層
             m.layers = m.layers[:2]
 
-        # 2. 定義 ROI 與 時間
+        # 3. GEE 資料處理
         roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
         start_date = f'{year}-01-01'
         end_date = f'{year}-12-31'
 
-        # 3. GEE 運算
         collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                       .filterBounds(roi)
                       .filterDate(start_date, end_date)
@@ -91,33 +99,37 @@ def MapComponent(year):
         water_mask = ndwi.gt(0)
         ndci_masked = ndci.updateMask(water_mask)
 
-        # 視覺參數
-        palette = ['#0000ff', '#ffffff', '#00ff00', '#ffff00', '#ff0000']
-        ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette}
+        ndci_vis = {
+            'min': -0.1, 
+            'max': 0.5, 
+            'palette': ['#0000ff', '#ffffff', '#00ff00', '#ffff00', '#ff0000']
+        }
         
-        # 4. 轉換並加入圖層
+        # 4. 加入圖層
         try:
-            # 使用 geemap 的工具函數產生 ipyleaflet 圖層物件
+            # 使用 geemap 轉換 GEE 影像為 TileLayer
             layer = geemap.ee_tile_layer(ndci_masked, ndci_vis, name=f"{year} NDCI")
             m.add_layer(layer)
+            print(f"✅ 圖層已加入: {year}")
         except Exception as e:
-            print(f"圖層載入失敗: {e}")
+            print(f"❌ 圖層加入失敗: {e}")
 
-    # 監聽年份變化
+    # 當年份改變時，執行 update_layers
     solara.use_effect(update_layers, [year])
 
-    # C. 回傳地圖與自定義圖例
-    # --------------------------------------------------
+    # --- D. 畫面渲染 ---
     with solara.Column():
-        # 顯示地圖
+        # 地圖本體
         m.element()
         
-        # 自定義 HTML 圖例 (浮動視窗)
-        with solara.Card(style={"position": "absolute", "bottom": "20px", "right": "20px", "z-index": "1000", "width": "250px", "background-color": "rgba(255,255,255,0.8)"}):
+        # 【新功能】手動重置按鈕 (如果地圖還是跑掉，按這個救命)
+        with solara.Div(style="position: absolute; top: 80px; left: 60px; z-index: 1000;"):
+            solara.Button("📍 回到澎湖視角", on_click=fly_to_penghu, color="primary")
+
+        # 圖例 (Legend)
+        with solara.Card(style="position: absolute; bottom: 20px; right: 20px; z-index: 1000; width: 250px; background-color: rgba(255,255,255,0.9);"):
             solara.Markdown("**NDCI 葉綠素濃度**")
-            # CSS 漸層色條
             solara.HTML(tag="div", style="height: 20px; width: 100%; background: linear-gradient(to right, blue, white, green, yellow, red); margin-bottom: 5px; border: 1px solid #ccc;")
-            # 數值標籤
             with solara.Row(justify="space-between"):
                 solara.Text("-0.1 (清澈)", style="font-size: 12px")
                 solara.Text("0.5 (優養)", style="font-size: 12px")
@@ -128,38 +140,12 @@ def MapComponent(year):
 @solara.component
 def Page():
     with solara.Column(style={"width": "100%", "padding": "20px"}):
-        
-        with solara.Column(align="center"):
-            solara.Markdown("## 危害澎湖珊瑚礁之各項因子")
-            with solara.Column(style={"max-width": "800px"}):
-                solara.Markdown(
-                    """
-                    珊瑚礁生態系統面臨多重威脅，包括氣候變遷引發的海水溫度上升、海洋酸化、海水優樣化，以及人類活動如過度捕撈、污染和沿海開發等。
-                    """
-                )
-            solara.Markdown("---")
-
-        solara.Markdown("## 1. 海溫分布變化")
-        solara.Markdown("---")
-
         solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
         
         with solara.Column(style={"max-width": "900px", "margin": "0 auto"}):
-            solara.Markdown("""
-            ### 優養化（Eutrophication）
-            我們使用 Sentinel-2 衛星影像計算 **NDCI 指標** 來評估葉綠素濃度。
-            (紅色區域代表潛在的藻類爆發風險)
-            """)
+            solara.Markdown("紅色區域代表優養化風險高 (藻類濃度高)。")
         
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
             solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024)
-            
-            # 載入地圖組件
+            # 載入地圖
             MapComponent(selected_year.value)
-
-        solara.Markdown("---")
-        solara.Markdown("## 3. 珊瑚礁生態系崩壞")
-        solara.Markdown("預留空間")
-        solara.Markdown("---")
-        solara.Markdown("## 4. 人類活動影響")
-        solara.Markdown("預留空間")
