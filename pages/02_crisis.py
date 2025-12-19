@@ -31,7 +31,7 @@ except Exception as e:
 selected_year = solara.reactive(2021)
 
 # ==========================================
-# 2. 地圖組件 (Folium HTML + TempFile + Iframe修正版)
+# 2. 地圖組件 (最終修復版)
 # ==========================================
 @solara.component
 def MapComponent(year):
@@ -82,27 +82,35 @@ def MapComponent(year):
             with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
                 temp_path = tmp.name
             
+            # 將地圖存入暫存檔
             m.to_html(filename=temp_path)
             
+            # 讀取內容
             with open(temp_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
-                
+            
+            # 刪除暫存檔
             os.remove(temp_path)
+            
             return html_content
             
         except Exception as e:
             return f"<div>地圖生成錯誤: {str(e)}</div>"
 
-    # 使用 use_memo 緩存 HTML
+    # 使用 use_memo 緩存 HTML 字串
     map_html = solara.use_memo(get_map_html, dependencies=[year])
 
-    # 5. 【關鍵修正】使用正確的 Solara HTML Iframe 語法
-    # srcDoc 是 React 的屬性名稱，用來直接顯示 HTML 字串
-    return solara.HTML.iframe(
-        srcDoc=map_html,
-        width="100%",
-        height="700px",
-        style={"border": "none"}
+    # 5. 【最終修正】正確的 iframe 渲染方式
+    # solara.HTML 是一個函數，我們指定 tag="iframe"
+    # 並透過 attributes 字典傳入 srcDoc
+    return solara.HTML(
+        tag="iframe",
+        attributes={
+            "srcDoc": map_html,
+            "width": "100%",
+            "height": "700px",
+            "style": "border: none; display: block;" 
+        }
     )
 
 # ==========================================
@@ -117,4 +125,5 @@ def Page():
         
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
             solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024)
+            
             MapComponent(selected_year.value)
