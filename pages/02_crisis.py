@@ -31,59 +31,42 @@ except Exception as e:
 selected_year = solara.reactive(2025)
 
 # ==========================================
-# 2. 地圖組件 (圖例修復版)
+# 2. 地圖組件 A：優養化地圖 (NDCI)
 # ==========================================
 @solara.component
-def MapComponent(year):
-    
-    def get_map_html():
-        # 1. 初始化地圖
+def NDCIMap(year):
+    """
+    這張地圖專注於顯示 Sentinel-2 的優養化/葉綠素指標
+    """
+    def get_ndci_map_html():
         m = geemap.Map(center=[23.5, 119.5], zoom=11)
-        
-        # 2. 定義 ROI
-        roi = ee.Geometry.Rectangle([119.2741441721767, 23.169481136848866, 119.81144310766382, 23.87924197009108])
-
-        # 3. 定義夏季時間
+        roi = ee.Geometry.Rectangle([119.2741, 23.1695, 119.8114, 23.8792])
         start_date = f'{year}-05-01'
         end_date = f'{year}-09-30'
 
-        # =========================================
-        # 🔥 核心邏輯：雙模式去雲與去陸地
-        # =========================================
+        # 雙模式去雲邏輯
         if year >= 2019:
-            # --- 2019 後：SR 資料 + SCL 強力遮罩 ---
             collection_name = 'COPERNICUS/S2_SR_HARMONIZED'
-            
             def mask_algo(image):
                 scl = image.select('SCL')
-                mask = scl.eq(6) # 6 = Water (精確水體)
+                mask = scl.eq(6) 
                 return image.updateMask(mask).divide(10000)
-                
         else:
-            # --- 2018 前：TOA 資料 + NDWI 替代遮罩 ---
             collection_name = 'COPERNICUS/S2_HARMONIZED'
-            
             def mask_algo(image):
-                # 1. 基本 QA60 去雲
                 qa = image.select('QA60')
                 cloud_bit_mask = 1 << 10
                 cirrus_bit_mask = 1 << 11
-                qa_mask = qa.bitwiseAnd(cloud_bit_mask).eq(0).And(
-                          qa.bitwiseAnd(cirrus_bit_mask).eq(0))
-                
-                # 2. 使用 NDWI 去除陸地 (NDWI > 0 為水體)
+                qa_mask = qa.bitwiseAnd(cloud_bit_mask).eq(0).And(qa.bitwiseAnd(cirrus_bit_mask).eq(0))
                 ndwi = image.normalizedDifference(['B3', 'B8'])
                 water_mask = ndwi.gt(0) 
-                
                 final_mask = qa_mask.And(water_mask)
                 return image.updateMask(final_mask).divide(10000)
 
-        # 4. 指數計算
         def add_indices(image):
             ndci = image.normalizedDifference(['B5', 'B4']).rename('NDCI')
             return image.addBands(ndci)
 
-        # 5. 影像處理
         s2 = (ee.ImageCollection(collection_name)
               .filterDate(start_date, end_date)
               .filterBounds(roi)
@@ -92,34 +75,17 @@ def MapComponent(year):
               .map(add_indices))
 
         image_median = s2.median().clip(roi)
-
-        # 6. 視覺化參數 (定義一次，重複使用)
-        ndci_vis = {
-            'min': -0.05, 
-            'max': 0.15,
-            'palette': ['#0011ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000']
-        }
+        ndci_vis = {'min': -0.05, 'max': 0.15, 'palette': ['#0011ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000']}
         
-        # 7. 加入圖層與圖例
         try:
             m.addLayer(image_median, {'bands': ['B4', 'B3', 'B2'], 'min': 0, 'max': 0.3}, 'True Color')
-            
-            # 加入 NDCI 圖層
             layer_name = 'NDCI (Chlorophyll)'
             m.addLayer(image_median.select('NDCI'), ndci_vis, layer_name)
-            
-            # 【關鍵修復】
-            # 直接傳入 ndci_vis 字典，並指定 layer_name，這樣 geemap 才能正確綁定參數
-            m.add_colorbar(
-                ndci_vis, 
-                label="NDCI Chlorophyll Index", 
-                layer_name=layer_name
-            )
-            
+            m.add_colorbar(ndci_vis, label="NDCI Chlorophyll Index", layer_name=layer_name)
         except Exception as e:
-            print(f"圖層/圖例加入失敗: {e}")
+            print(f"NDCI圖層加入失敗: {e}")
             
-        # 8. 生成 HTML
+        # 生成 HTML
         try:
             with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
                 temp_path = tmp.name
@@ -131,9 +97,8 @@ def MapComponent(year):
         except Exception as e:
             return f"<div>地圖生成錯誤: {str(e)}</div>"
 
-    map_html = solara.use_memo(get_map_html, dependencies=[year])
+    map_html = solara.use_memo(get_ndci_map_html, dependencies=[year])
 
-    # 9. 顯示 Iframe (寬度設定為 100%)
     return solara.HTML(
         tag="iframe",
         attributes={
@@ -145,7 +110,69 @@ def MapComponent(year):
     )
 
 # ==========================================
-# 3. 頁面組件
+# 3. 地圖組件 B：棘冠海星警戒地圖 (Starfish)
+# ==========================================
+@solara.component
+def StarfishMap():
+    """
+    這張地圖專門用來標示棘冠海星爆發的紅色警戒區
+    """
+    def get_starfish_map_html():
+        # 初始化地圖 (聚焦在南方四島與七美)
+        m = geemap.Map(center=[23.35, 119.55], zoom=11)
+        m.add_basemap("HYBRID") # 使用混合衛星圖，看島嶼比較清楚
+
+        # 定義五個島嶼的約略範圍
+        qimei = ee.Geometry.Rectangle([119.408, 23.185, 119.445, 23.215])       # 七美
+        dongji = ee.Geometry.Rectangle([119.658, 23.250, 119.680, 23.265])      # 東吉
+        xiji = ee.Geometry.Rectangle([119.605, 23.245, 119.625, 23.260])        # 西吉
+        dongyuping = ee.Geometry.Rectangle([119.510, 23.255, 119.525, 23.268])  # 東嶼坪
+        xiyuping = ee.Geometry.Rectangle([119.500, 23.260, 119.510, 23.272])    # 西嶼坪
+
+        # 合併成一個圖層
+        outbreak_zones = ee.FeatureCollection([
+            ee.Feature(qimei, {'name': '七美嶼'}),
+            ee.Feature(dongji, {'name': '東吉嶼'}),
+            ee.Feature(xiji, {'name': '西吉嶼'}),
+            ee.Feature(dongyuping, {'name': '東嶼坪'}),
+            ee.Feature(xiyuping, {'name': '西嶼坪'})
+        ])
+        
+        # 設定樣式：紅色空心框，線寬 3，更明顯一點
+        style_params = {'color': 'red', 'width': 3, 'fillColor': '00000000'}
+
+        try:
+            m.addLayer(outbreak_zones.style(**style_params), {}, "棘冠海星爆發警戒區")
+        except Exception as e:
+            print(f"警戒區圖層加入失敗: {e}")
+
+        # 生成 HTML
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
+                temp_path = tmp.name
+            m.to_html(filename=temp_path)
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            os.remove(temp_path)
+            return html_content
+        except Exception as e:
+            return f"<div>地圖生成錯誤: {str(e)}</div>"
+
+    # 這個地圖是靜態的，不需要依賴年份變數，只生成一次
+    map_html = solara.use_memo(get_starfish_map_html, dependencies=[])
+
+    return solara.HTML(
+        tag="iframe",
+        attributes={
+            "srcDoc": map_html,
+            "width": "100%",
+            "height": "500px", # 這個地圖不用那麼高，500px 夠了
+            "style": "border: none; display: block; width: 100%;" 
+        }
+    )
+
+# ==========================================
+# 4. 頁面組件 (排版整合)
 # ==========================================
 @solara.component
 def Page():
@@ -171,30 +198,37 @@ def Page():
             else:
                 solara.Markdown("*(年份 ≥ 2019：使用 SR 資料 + SCL 精準去陸地)*", style="font-size: 12px; color: green;")
 
-        # 地圖區塊
+        # --- 地圖 A：優養化 (NDCI) ---
         with solara.Column(style={"width": "100%", "padding-top": "20px"}):
             with solara.Card("Sentinel-2 衛星葉綠素監測"):
                 solara.SliderInt(label="選擇年份", value=selected_year, min=2016, max=2025)
-                MapComponent(selected_year.value)
+                # 呼叫優養化地圖組件
+                NDCIMap(selected_year.value)
         
-        with solara.Column(style={"max-width": "900px", "width": "100%", "padding-top": "20px"}):
-            solara.Markdown("---")
-
         # ----------------------------------------------------
-        # 3. 珊瑚礁生態系崩壞 (加入棘冠海星內容)
+        # 3. 珊瑚礁生態系崩壞
         # ----------------------------------------------------
         with solara.Column(style={"max-width": "900px", "width": "100%", "padding-top": "40px"}):
             solara.Markdown("---")
             solara.Markdown("## 3. 珊瑚礁生態系崩壞：棘冠海星的威脅")
             
             solara.Markdown("""
-            ### 🌊 珊瑚礁大胃王:棘冠海星 (Crown-of-thorns Starfish) 
-            近年來，澎湖七美、西吉嶼等海域傳出**棘冠海星**（俗稱魔鬼海星）異常增生的警訊。這些被稱為「魔鬼海星」的生物，正悄悄啃食著我們美麗的珊瑚礁。
+            ### 🌊 珊瑚礁的隱形殺手：棘冠海星 (Crown-of-thorns Starfish) 
+            近年來，澎湖海域傳出**棘冠海星**（俗稱魔鬼海星）異常增生的警訊。
+            **澎湖海域現況**：近年來，除了**七美**海域外，南方四島國家公園範圍內的**東吉、西吉、東嶼坪、西嶼坪**等地區也觀察到棘冠海星數量激增，對當地珊瑚礁造成嚴重威脅。
             """)
+            
+        # --- 地圖 B：棘冠海星警戒區 (獨立顯示) ---
+        with solara.Column(style={"width": "100%", "padding-top": "10px"}):
+             with solara.Card("⚠️ 棘冠海星爆發熱點地圖"):
+                solara.Markdown("**🟥 紅色框線標示出近期棘冠海星數量激增的區域 (七美及南方四島)**")
+                # 呼叫棘冠海星地圖組件
+                StarfishMap()
 
-            with solara.Card("🔍 認識棘冠海星"):
+        with solara.Column(style={"max-width": "900px", "width": "100%", "padding-top": "20px"}):
+            with solara.Card("🔍 認識魔鬼海星"):
                 solara.Markdown("""
-                棘冠海星本是珊瑚礁生態系中的一員，但當牠們數量失控時，便會成為生態殺手。
+                棘冠海星是珊瑚礁生態系中的一員，但當牠們數量失控時，便會成為生態殺手。
                 * **🍽️ 專吃珊瑚**：牠們喜愛攝食成長快速的石珊瑚，會將胃翻出體外直接消化珊瑚蟲，留下一片慘白的珊瑚骨骼。
                 * **📈 食量驚人**：一隻成體在一年內，最多可吞噬高達 **6 平方公尺** 的珊瑚。
                 * **⚠️ 具毒性**：體表布滿尖銳的毒棘，人類若不慎觸碰可能會中毒受傷。
@@ -233,10 +267,10 @@ def Page():
                     只要抓到一次機會，就能以幾何級數增長。
                     """)
 
-            solara.Markdown("### 📊 對珊瑚礁生態系的重要性")
+            solara.Markdown("### 📊 監測紀錄與警訊")
             solara.Markdown("""
-            * **澳洲大堡礁**：過去 27 年的研究顯示，珊瑚覆蓋率下降的主因中，**棘冠海星的啃食佔了 42%**，破壞力僅次於颱風。
-            * **澎湖海域**：近年來，澎湖七美、東吉、西吉、東嶼坪、西嶼坪等地區也觀察到棘冠海星數量激增，對當地珊瑚礁造成嚴重威脅。
+            **澳洲大堡礁**：過去 27 年的研究顯示，珊瑚覆蓋率下降的主因中，**棘冠海星的啃食佔了 42%**，破壞力僅次於颱風。
+            **澎湖海域**：近年來，澎湖七美、東吉、西吉、東嶼坪、西嶼坪等地區也觀察到棘冠海星數量激增，對當地珊瑚礁造成嚴重威脅。
             """)
             
             solara.Markdown("""
