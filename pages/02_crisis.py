@@ -1,5 +1,5 @@
 import solara
-import geemap
+import leafmap.leafmap as leafmap
 import ee
 import os
 import json
@@ -31,32 +31,27 @@ except Exception as e:
 selected_year = solara.reactive(2024)
 
 # ==========================================
-# 2. 地圖生產函數 (關閉工具列以修復崩潰)
+# 2. 地圖生產函數 (使用 leafmap 但修正視角)
 # ==========================================
 def get_eutrophication_map(year_val):
     """
-    使用 geemap 建立地圖
-    關鍵修正：關閉 toolbar_ctrl 和 draw_ctrl 以避免 Solara Widget Closed 錯誤
+    使用 leafmap 建立地圖 (比 geemap 更適合 Solara 環境)
     """
-    # 【關鍵修正】這裡加上 toolbar_ctrl=False, draw_ctrl=False
-    m = geemap.Map(
-        center=[23.5, 119.5], 
-        zoom=12,
-        toolbar_ctrl=False,  # 關閉工具列 (解決報錯的主因)
-        draw_ctrl=False,     # 關閉繪圖工具 (減少干擾)
-        lite_mode=True       # 開啟輕量模式 (讓地圖載入更快更穩)
-    )
+    # 1. 建立地圖
+    # 【關鍵修正】這裡直接設定 center 和 zoom，解決之前看不到澎湖的問題
+    m = leafmap.Map(center=[23.5, 119.5], zoom=12)
     
     # 加入底圖
     m.add_basemap("HYBRID")
 
-    # 定義 ROI (澎湖範圍)
+    # 2. 定義 ROI (澎湖範圍)
     roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
 
-    # GEE 資料處理
+    # 3. GEE 資料處理
     start_date = f'{year_val}-01-01'
     end_date = f'{year_val}-12-31'
     
+    # 雲量放寬至 30%
     collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                   .filterBounds(roi)
                   .filterDate(start_date, end_date)
@@ -71,11 +66,19 @@ def get_eutrophication_map(year_val):
     ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette}
     rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
 
-    # 加入圖層
+    # 4. 加入圖層
+    # leafmap 使用 add_ee_layer
     try:
-        m.addLayer(collection.clip(roi), rgb_vis, f"{year_val} 真實色彩")
-        m.addLayer(ndci.clip(roi), ndci_vis, f"{year_val} 葉綠素(優養化)指標")
-        m.add_colorbar(vis_params=ndci_vis, label="NDCI (葉綠素濃度)")
+        m.add_ee_layer(collection.clip(roi), rgb_vis, f"{year_val} 真實色彩")
+        m.add_ee_layer(ndci.clip(roi), ndci_vis, f"{year_val} 葉綠素(優養化)指標")
+        
+        # 加入色標 (記得我們之前修復過的參數)
+        m.add_colorbar(
+            colors=palette, 
+            vmin=-0.1, 
+            vmax=0.5, 
+            label="NDCI (葉綠素濃度)"
+        )
     except Exception as e:
         print(f"圖層加入失敗: {e}")
     
@@ -135,6 +138,7 @@ def Page():
             # 顯示地圖
             m = get_eutrophication_map(selected_year.value)
             
+            # leafmap 物件可以直接用 .element()
             m.element(height="600px", width="100%")
 
         solara.Markdown("---")
