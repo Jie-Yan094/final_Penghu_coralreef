@@ -173,7 +173,7 @@ def Page():
         with solara.Column(style={"width": "100%", "padding-top": "20px"}):
             with solara.Card("Sentinel-2 衛星葉綠素監測"):
                 # Slider
-                solara.SliderInt(label="選擇年份", value=selected_year, min=2016, max=2024)
+                solara.SliderInt(label="選擇年份", value=selected_year, min=2016, max=2025)
                 # Map (現在應該會撐滿卡片)
                 MapComponent(selected_year.value)
         
