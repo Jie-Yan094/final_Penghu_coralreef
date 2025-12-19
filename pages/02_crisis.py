@@ -177,7 +177,7 @@ def StarfishMap():
     )
 
 # ==========================================
-# 4. 圖表組件：NDCI 統計圖
+# 4. 圖表組件：NDCI 統計圖 (修正版)
 # ==========================================
 @solara.component
 def NDCIChart():
@@ -208,18 +208,18 @@ def NDCIChart():
         fig.update_layout(
             title='NDCI 夏季平均值 vs 有效影像數量',
             xaxis=dict(title='年份', tickmode='linear'),
+            # --- 修正開始：將 titlefont 改為 title=dict(text=..., font=...) ---
             yaxis=dict(
-                title='NDCI 指數', 
-                titlefont=dict(color="#00CC96"),
+                title=dict(text='NDCI 指數', font=dict(color="#00CC96")),
                 tickfont=dict(color="#00CC96")
             ),
             yaxis2=dict(
-                title='影像數量 (張)',
-                titlefont=dict(color="#636EFA"),
+                title=dict(text='影像數量 (張)', font=dict(color="#636EFA")),
                 tickfont=dict(color="#636EFA"),
                 overlaying='y',
                 side='right'
             ),
+            # --- 修正結束 ---
             legend=dict(x=0.01, y=0.99),
             hovermode="x unified",
             margin=dict(l=40, r=40, t=40, b=40)
