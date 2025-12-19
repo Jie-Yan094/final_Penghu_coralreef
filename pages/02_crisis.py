@@ -38,10 +38,14 @@ def get_eutrophication_map(year_val):
     """
     建立並回傳一個設定好的 leafmap.Map 物件
     """
-    m = leafmap.Map(center=[23.5, 119.5], zoom=11)
+    # 1. 建立地圖，這裡先設定好中心點
+    m = leafmap.Map(center=[23.5, 119.5], zoom=12)
     m.add_basemap("HYBRID")
 
+    # 2. 定義 ROI (澎湖範圍)
     roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
+
+    # 3. GEE 資料處理
     start_date = f'{year_val}-01-01'
     end_date = f'{year_val}-12-31'
     
@@ -51,16 +55,24 @@ def get_eutrophication_map(year_val):
                   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
                   .median())
 
+    # 計算 NDCI
     ndci = collection.normalizedDifference(['B5', 'B4']).rename('NDCI')
 
+    # 視覺化參數
     palette = ['blue', 'white', 'green', 'yellow', 'red']
     ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette}
     rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
 
+    # 4. 加入圖層
     m.add_ee_layer(collection.clip(roi), rgb_vis, f"{year_val} 真實色彩")
     m.add_ee_layer(ndci.clip(roi), ndci_vis, f"{year_val} 葉綠素(優養化)指標")
     
+    # 加入色標
     m.add_colorbar(colors=palette, vmin=-0.1, vmax=0.5, label="NDCI (葉綠素濃度)")
+    
+    # 【關鍵修正】強制設定視角 (經度, 緯度, 縮放層級)
+    # leafmap 的 set_center 順序通常是 (lon, lat, zoom)
+    m.set_center(119.5, 23.5, 12)
     
     return m
 
