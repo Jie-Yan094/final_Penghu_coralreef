@@ -116,7 +116,7 @@ def Page():
     with solara.Column(style={"width": "100%", "padding": "20px"}):
         
         solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
-        solara.Markdown("紅色區域代表優養化風險高。")
+        solara.Markdown("紅色區域代表優養化風險高，藍色區域則為低風險。請選擇年份以查看不同年度的狀況。")
         
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
             solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024)
