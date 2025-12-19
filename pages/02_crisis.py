@@ -216,7 +216,7 @@ def Page():
             solara.Markdown("## 3. 珊瑚礁生態系崩壞：棘冠海星的威脅")
             
             # 🔥 這裡使用你要求的「左圖右文」排版
-            image_url = "https://raw.githubusercontent.com/Jie-Yan094/final_Penghu_coralreef/main/starfish.jpg"
+            image_url = "https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg"
             
             with solara.Row(gap="24px", style={"flex-wrap": "wrap", "align-items": "center"}):
                 
