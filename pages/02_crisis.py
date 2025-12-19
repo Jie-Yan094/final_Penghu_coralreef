@@ -1,6 +1,5 @@
 import solara
-import ipyleaflet
-import geemap
+import geemap.foliumap as geemap  # 【關鍵】改用 foliumap，不依賴 WebSocket
 import ee
 import os
 import json
@@ -28,68 +27,77 @@ except Exception as e:
 # ==========================================
 # 1. 變數定義
 # ==========================================
-selected_year = solara.reactive(2024)
+selected_year = solara.reactive(2021)
 
 # ==========================================
-# 2. 地圖組件 (強制重繪版)
+# 2. 地圖組件 (Folium HTML 版 - 絕對穩定)
 # ==========================================
 @solara.component
-def MapWidget(year):
-    """
-    這個組件負責建立單一、靜態的地圖實例。
-    我們不試圖更新它，而是依靠外層的 key 機制來重建它。
-    """
+def MapComponent(year):
     
-    # 1. 準備 GEE 資料 (在建立地圖前先準備好)
-    roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
-    start_date = f'{year}-01-01'
-    end_date = f'{year}-12-31'
+    # 建立地圖函數
+    def get_map_html():
+        # 1. 初始化地圖 (使用 foliumap)
+        # 這裡產生的不是 Widget，而是靜態的地圖物件，中心點寫死在裡面
+        m = geemap.Map(center=[23.5, 119.5], zoom=11)
+        
+        # 2. GEE 資料處理
+        roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
+        start_date = f'{year}-01-01'
+        end_date = f'{year}-12-31'
 
-    collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                  .filterBounds(roi)
-                  .filterDate(start_date, end_date)
-                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
-                  .median()
-                  .clip(roi))
+        collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                      .filterBounds(roi)
+                      .filterDate(start_date, end_date)
+                      .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+                      .median()
+                      .clip(roi))
 
-    # 計算 NDCI
-    ndci = collection.normalizedDifference(['B5', 'B4']).rename('NDCI')
-    
-    # 水體遮罩
-    ndwi = collection.normalizedDifference(['B3', 'B8'])
-    water_mask = ndwi.gt(0)
-    ndci_masked = ndci.updateMask(water_mask)
+        # 計算 NDCI
+        ndci = collection.normalizedDifference(['B5', 'B4']).rename('NDCI')
+        
+        # 水體遮罩
+        ndwi = collection.normalizedDifference(['B3', 'B8'])
+        water_mask = ndwi.gt(0)
+        ndci_masked = ndci.updateMask(water_mask)
 
-    ndci_vis = {
-        'min': -0.1, 
-        'max': 0.5, 
-        'palette': ['#0000ff', '#ffffff', '#00ff00', '#ffff00', '#ff0000']
-    }
+        # 視覺參數
+        ndci_vis = {
+            'min': -0.1, 
+            'max': 0.5, 
+            'palette': ['blue', 'white', 'green', 'yellow', 'red']
+        }
+        
+        # 3. 加入圖層
+        try:
+            m.addLayer(collection, {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}, 'True Color')
+            m.addLayer(ndci_masked, ndci_vis, 'NDCI')
+            
+            # 加入 Colorbar (foliumap 的 colorbar 比較穩定)
+            m.add_colorbar(
+                colors=['blue', 'white', 'green', 'yellow', 'red'], 
+                vmin=-0.1, 
+                vmax=0.5, 
+                label="NDCI Chlorophyll"
+            )
+        except Exception as e:
+            print(f"圖層加入失敗: {e}")
+            
+        # 4. 轉為 HTML 字串
+        return m.to_html()
 
-    # 2. 建立地圖實例
-    # 注意：這裡不再使用 use_memo，因為我們希望每次這個組件被 mount 時都是全新的
-    m = ipyleaflet.Map(
-        center=[23.5, 119.5],  # 這裡寫死澎湖座標
-        zoom=11,
-        basemap=ipyleaflet.basemaps.Esri.WorldImagery,
-        scroll_wheel_zoom=True,
-        layout={'height': '700px', 'width': '100%'}
+    # 使用 use_memo 只有在年份改變時才重新生成 HTML
+    # 這會讓地圖在切換年份時閃一下，但保證位置正確
+    map_html = solara.use_memo(get_map_html, dependencies=[year])
+
+    # 5. 使用 Iframe 顯示
+    # 這是最暴力的解法：直接把生成的 HTML 塞進一個框架裡
+    # 這樣 Solara 就管不到地圖內部，地圖也不會被 Solara 的佈局影響
+    return solara.components.html.Iframe(
+        src_doc=map_html,
+        width="100%",
+        height="700px"
     )
-
-    # 3. 加入 GEE 圖層
-    try:
-        # 產生 TileLayer
-        gee_layer = geemap.ee_tile_layer(ndci_masked, ndci_vis, name=f"{year} NDCI")
-        m.add_layer(gee_layer)
-        
-        # 加入地名標籤 (選用)
-        m.add_layer(ipyleaflet.Basemap.to_layer(ipyleaflet.basemaps.CartoDB.PositronOnlyLabels))
-        
-    except Exception as e:
-        print(f"圖層載入錯誤: {e}")
-
-    # 4. 回傳地圖元素
-    return m.element()
 
 # ==========================================
 # 3. 頁面組件
@@ -99,29 +107,10 @@ def Page():
     with solara.Column(style={"width": "100%", "padding": "20px"}):
         
         solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
-        
-        with solara.Column(style={"max-width": "900px", "margin": "0 auto"}):
-             solara.Markdown("""
-            ### 優養化（Eutrophication）
-            (紅色區域代表潛在的藻類爆發風險)
-            """)
+        solara.Markdown("紅色區域代表優養化風險高。")
         
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
-            # Slider
             solara.SliderInt(label="選擇年份", value=selected_year, min=2019, max=2024)
             
-            # 【關鍵修改】
-            # 我們在這裡呼叫 MapWidget，並且給它一個 key。
-            # 當 selected_year.value 改變時，key 也會變 (例如 "map-2023" -> "map-2024")
-            # Solara 會認為這是一個全新的組件，因此會銷毀舊的，建立一個全新的地圖。
-            # 這樣保證了每次地圖出來時，中心點一定會重置到 [23.5, 119.5]。
-            MapWidget(selected_year.value).key(f"map-{selected_year.value}")
-
-            # 圖例 (Legend) - 獨立於地圖之外
-            with solara.Div(style="margin-top: 10px; display: flex; justify-content: center;"):
-                with solara.Card(style="width: 300px; padding: 10px; text-align: center;"):
-                    solara.Text("NDCI 葉綠素濃度", style="font-weight: bold;")
-                    solara.HTML(tag="div", style="height: 20px; width: 100%; background: linear-gradient(to right, blue, white, green, yellow, red); margin: 5px 0; border: 1px solid #ccc;")
-                    with solara.Row(justify="space-between"):
-                        solara.Text("-0.1 (清澈)")
-                        solara.Text("0.5 (優養)")
+            # 呼叫地圖
+            MapComponent(selected_year.value)
