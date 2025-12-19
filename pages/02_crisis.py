@@ -1,5 +1,5 @@
 import solara
-import geemap  # 【改用 geemap】這是解決圖層與縮放問題的關鍵
+import geemap
 import ee
 import os
 import json
@@ -31,27 +31,32 @@ except Exception as e:
 selected_year = solara.reactive(2024)
 
 # ==========================================
-# 2. 地圖生產函數 (改用 geemap)
+# 2. 地圖生產函數 (關閉工具列以修復崩潰)
 # ==========================================
 def get_eutrophication_map(year_val):
     """
-    使用 geemap 建立地圖，確保圖層與縮放正確
+    使用 geemap 建立地圖
+    關鍵修正：關閉 toolbar_ctrl 和 draw_ctrl 以避免 Solara Widget Closed 錯誤
     """
-    # 1. 建立地圖 (直接設定中心與縮放)
-    # 澎湖中心點: [23.5, 119.5], Zoom: 12 (數字越大越近)
-    m = geemap.Map(center=[23.5, 119.5], zoom=12)
+    # 【關鍵修正】這裡加上 toolbar_ctrl=False, draw_ctrl=False
+    m = geemap.Map(
+        center=[23.5, 119.5], 
+        zoom=12,
+        toolbar_ctrl=False,  # 關閉工具列 (解決報錯的主因)
+        draw_ctrl=False,     # 關閉繪圖工具 (減少干擾)
+        lite_mode=True       # 開啟輕量模式 (讓地圖載入更快更穩)
+    )
     
-    # 加入底圖 (衛星混合圖)
+    # 加入底圖
     m.add_basemap("HYBRID")
 
-    # 2. 定義 ROI (澎湖範圍)
+    # 定義 ROI (澎湖範圍)
     roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
 
-    # 3. GEE 資料處理
+    # GEE 資料處理
     start_date = f'{year_val}-01-01'
     end_date = f'{year_val}-12-31'
     
-    # 稍微放寬雲量限制到 30%，確保能抓到影像
     collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                   .filterBounds(roi)
                   .filterDate(start_date, end_date)
@@ -66,16 +71,13 @@ def get_eutrophication_map(year_val):
     ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette}
     rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
 
-    # 4. 加入圖層 (geemap 使用 addLayer 即可，會自動處理 EE 物件)
-    # 使用 try-except 避免如果當年沒資料導致整個地圖掛掉
+    # 加入圖層
     try:
         m.addLayer(collection.clip(roi), rgb_vis, f"{year_val} 真實色彩")
         m.addLayer(ndci.clip(roi), ndci_vis, f"{year_val} 葉綠素(優養化)指標")
-        
-        # 加入色標
         m.add_colorbar(vis_params=ndci_vis, label="NDCI (葉綠素濃度)")
     except Exception as e:
-        print(f"圖層加入失敗 (可能是該年份無影像): {e}")
+        print(f"圖層加入失敗: {e}")
     
     return m
 
@@ -131,10 +133,8 @@ def Page():
             solara.SliderInt(label="選擇年份", value=selected_year, min=2015, max=2025)
             
             # 顯示地圖
-            # 呼叫 geemap 函數
             m = get_eutrophication_map(selected_year.value)
             
-            # geemap 物件也可以直接用 .element() 顯示
             m.element(height="600px", width="100%")
 
         solara.Markdown("---")
