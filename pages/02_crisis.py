@@ -1,5 +1,5 @@
 import solara
-import leafmap
+import geemap  # 回歸 geemap，它是 GEE 的原廠工具，對圖層支援最好
 import ee
 import os
 import json
@@ -34,18 +34,24 @@ except Exception as e:
 selected_year = solara.reactive(2023)
 
 # ==========================================
-# 2. 地圖生產函數 (關閉工具列 + 手動 URL)
+# 2. 地圖生產函數 (Geemap 極簡模式)
 # ==========================================
 def get_map(year_val):
-    # 【關鍵修正】建立地圖時，把會報錯的工具列全部關掉
-    m = leafmap.Map(
+    # 建立地圖：關閉所有可能導致崩潰的互動工具
+    # zoom=12 是澎湖的最佳視角
+    m = geemap.Map(
         center=[23.5, 119.5], 
         zoom=12,
-        toolbar_control=False,  # 關閉主要工具列 (解決 cog_layer_dict 錯誤)
-        draw_control=False,     # 關閉繪圖工具
-        layers_control=True     # 保留圖層切換 (右上角那個)
+        toolbar_ctrl=False,  # 關工具列
+        draw_ctrl=False,     # 關繪圖
+        search_ctrl=False,   # 關搜尋
+        layer_ctrl=True,     # 只留圖層控制
+        scale_ctrl=True,     # 只留比例尺
+        fullscreen_ctrl=False,
+        attribution_ctrl=False
     )
     
+    # 加入混合底圖 (衛星+路網)
     m.add_basemap("HYBRID")
 
     roi = ee.Geometry.Rectangle([119.3, 23.1, 119.8, 23.8])
@@ -53,50 +59,46 @@ def get_map(year_val):
     end_date = f'{year_val}-12-31'
     
     try:
-        # 1. 抓取影像
+        # 1. 抓取影像 (不設雲量限制，確保有圖)
         collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                       .filterBounds(roi)
                       .filterDate(start_date, end_date))
 
         count = collection.size().getInfo()
-        print(f"🔍 {year_val} 年共找到 {count} 張影像")
+        print(f"🔍 {year_val} 年共找到 {count} 張影像") # Log 確認點
         
         if count == 0:
             error_msg.set(f"❌ {year_val} 年無影像")
             return m
 
-        # 2. 取中位數運算
+        # 2. 運算
         image = collection.median().clip(roi)
         ndci = image.normalizedDifference(['B5', 'B4']).rename('NDCI')
 
-        # 3. 設定視覺化參數
-        palette_str = 'blue,white,green,yellow,red'
-        ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette_str}
+        # 3. 視覺化參數
+        ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': ['blue', 'white', 'green', 'yellow', 'red']}
         rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
 
-        # ======================================================
-        # 手動索取 MapID (最穩定的圖層載入法)
-        # ======================================================
+        # 4. 加入圖層 (geemap 會自動處理 Token 和 URL)
+        m.addLayer(image, rgb_vis, f"{year_val} 真實色彩")
+        m.addLayer(ndci, ndci_vis, f"{year_val} NDCI 指標")
         
-        # A. 真實色彩圖層
-        map_id_rgb = image.getMapId(rgb_vis)
-        tile_url_rgb = map_id_rgb['tile_fetcher'].url_format
-        m.add_tile_layer(url=tile_url_rgb, name=f"{year_val} 真實色彩", attribution="Google Earth Engine")
-
-        # B. NDCI 優養化圖層
-        map_id_ndci = ndci.getMapId(ndci_vis)
-        tile_url_ndci = map_id_ndci['tile_fetcher'].url_format
-        m.add_tile_layer(url=tile_url_ndci, name=f"{year_val} NDCI 指標", attribution="Google Earth Engine")
-
         # 加上色標
-        m.add_colorbar(colors=['blue', 'white', 'green', 'yellow', 'red'], vmin=-0.1, vmax=0.5, label="NDCI")
-        
-        # 4. 強制視角
-        m.set_center(119.5, 23.5, 12)
+        m.add_colorbar(vis_params=ndci_vis, label="NDCI")
+
+        # 【強制視角】最後再鎖定一次，確保不會跑回全球
+        m.setCenter(119.5, 23.5, 12)
         
         # 成功訊息
         error_msg.set("")
-        info_msg.set(f"✅ 成功載入 {year_val} 年 (共 {count} 張合成)")
+        info_msg.set(f"✅ {year_val} 年載入成功 (共 {count} 張合成)")
+        
+        # 【除錯用】印出其中一個圖層的網址，確認是否生成
+        try:
+             url = image.getMapId(rgb_vis)['tile_fetcher'].url_format
+             print(f"🔗 產生的圖層網址範例: {url}")
+        except:
+             pass
         
     except Exception as e:
         error_msg.set(f"載入失敗: {str(e)}")
@@ -137,6 +139,7 @@ def Page():
         # 地圖容器
         with solara.Column(style={"width": "100%", "height": "650px", "border": "1px solid #ddd", "margin-top": "20px"}):
             m = get_map(selected_year.value)
+            # 使用 .element() 顯示
             m.element()
             
         with solara.Row(justify="center", style={"margin-top": "20px"}):
