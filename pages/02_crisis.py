@@ -1,5 +1,5 @@
 import solara
-import leafmap.leafmap as leafmap
+import geemap  # 【改用 geemap】這是解決圖層與縮放問題的關鍵
 import ee
 import os
 import json
@@ -20,7 +20,6 @@ try:
         ee.Initialize(credentials=creds, project='ee-s1243037-0')
         print("✅ 雲端環境：GEE 驗證成功！")
     else:
-        # 本機測試用
         ee.Initialize(project='ee-s1243037-0')
         print("⚠️ 本機環境：使用預設驗證")
 except Exception as e:
@@ -29,17 +28,20 @@ except Exception as e:
 # ==========================================
 # 1. 變數定義
 # ==========================================
-selected_year = solara.reactive(2025)
+selected_year = solara.reactive(2024)
 
 # ==========================================
-# 2. 地圖生產函數 (Function Pattern)
+# 2. 地圖生產函數 (改用 geemap)
 # ==========================================
 def get_eutrophication_map(year_val):
     """
-    建立並回傳一個設定好的 leafmap.Map 物件
+    使用 geemap 建立地圖，確保圖層與縮放正確
     """
-    # 1. 建立地圖，這裡先設定好中心點
-    m = leafmap.Map(center=[23.5, 119.5], zoom=12)
+    # 1. 建立地圖 (直接設定中心與縮放)
+    # 澎湖中心點: [23.5, 119.5], Zoom: 12 (數字越大越近)
+    m = geemap.Map(center=[23.5, 119.5], zoom=12)
+    
+    # 加入底圖 (衛星混合圖)
     m.add_basemap("HYBRID")
 
     # 2. 定義 ROI (澎湖範圍)
@@ -49,10 +51,11 @@ def get_eutrophication_map(year_val):
     start_date = f'{year_val}-01-01'
     end_date = f'{year_val}-12-31'
     
+    # 稍微放寬雲量限制到 30%，確保能抓到影像
     collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                   .filterBounds(roi)
                   .filterDate(start_date, end_date)
-                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
                   .median())
 
     # 計算 NDCI
@@ -63,16 +66,16 @@ def get_eutrophication_map(year_val):
     ndci_vis = {'min': -0.1, 'max': 0.5, 'palette': palette}
     rgb_vis = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
 
-    # 4. 加入圖層
-    m.add_ee_layer(collection.clip(roi), rgb_vis, f"{year_val} 真實色彩")
-    m.add_ee_layer(ndci.clip(roi), ndci_vis, f"{year_val} 葉綠素(優養化)指標")
-    
-    # 加入色標
-    m.add_colorbar(colors=palette, vmin=-0.1, vmax=0.5, label="NDCI (葉綠素濃度)")
-    
-    # 【關鍵修正】強制設定視角 (經度, 緯度, 縮放層級)
-    # leafmap 的 set_center 順序通常是 (lon, lat, zoom)
-    m.set_center(119.5, 23.5, 12)
+    # 4. 加入圖層 (geemap 使用 addLayer 即可，會自動處理 EE 物件)
+    # 使用 try-except 避免如果當年沒資料導致整個地圖掛掉
+    try:
+        m.addLayer(collection.clip(roi), rgb_vis, f"{year_val} 真實色彩")
+        m.addLayer(ndci.clip(roi), ndci_vis, f"{year_val} 葉綠素(優養化)指標")
+        
+        # 加入色標
+        m.add_colorbar(vis_params=ndci_vis, label="NDCI (葉綠素濃度)")
+    except Exception as e:
+        print(f"圖層加入失敗 (可能是該年份無影像): {e}")
     
     return m
 
@@ -100,10 +103,9 @@ def Page():
 
         solara.Markdown("---")
 
-        # --- 2. 優養化區塊 (已合併你的新文字) ---
+        # --- 2. 優養化區塊 ---
         solara.Markdown("## 2. 海洋優養化指標")
         
-        # 這裡放入你提供的說明文字，我微調了 Markdown 符號讓排版更漂亮
         with solara.Column(style={"max-width": "800px", "text-align": "left"}):
             solara.Markdown("""
             ### 優養化（Eutrophication）
@@ -118,7 +120,6 @@ def Page():
             """)
         
         with solara.Card("Sentinel-2 衛星葉綠素監測"):
-            # 這裡放入顏色說明
             solara.Markdown("""
             **透過 NDCI 指標分析澎湖海域葉綠素濃度：**
             * 🔵 **藍色**：水質清澈，葉綠素濃度低。
@@ -129,8 +130,11 @@ def Page():
             # 滑桿
             solara.SliderInt(label="選擇年份", value=selected_year, min=2015, max=2025)
             
-            # 顯示地圖 (使用函數模式，穩定不報錯)
+            # 顯示地圖
+            # 呼叫 geemap 函數
             m = get_eutrophication_map(selected_year.value)
+            
+            # geemap 物件也可以直接用 .element() 顯示
             m.element(height="600px", width="100%")
 
         solara.Markdown("---")
