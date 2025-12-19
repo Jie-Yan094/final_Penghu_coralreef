@@ -6,7 +6,7 @@ import json
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. GEE 驗證與初始化 (全域執行)
+# 0. GEE 驗證與初始化 (修正版)
 # ==========================================
 try:
     # 嘗試從 Hugging Face Secret 讀取金鑰
@@ -14,10 +14,16 @@ try:
     
     if key_content:
         service_account_info = json.loads(key_content)
-        creds = Credentials.from_service_account_info(service_account_info)
-        # 這裡填入你的學校專案 ID
+        
+        # 【關鍵修正】這裡加上 scopes，告訴 Google 我們要用 GEE
+        creds = Credentials.from_service_account_info(
+            service_account_info,
+            scopes=['https://www.googleapis.com/auth/earthengine']
+        )
+        
+        # 使用帶有正確 scope 的憑證進行初始化
         ee.Initialize(credentials=creds, project='ee-s1243037-0')
-        print("✅ 雲端環境：GEE 驗證成功！")
+        print("✅ 雲端環境：GEE 驗證成功！(Scope 設定完成)")
     else:
         # 本機測試用
         ee.Initialize(project='ee-s1243037-0')
@@ -30,7 +36,7 @@ except Exception as e:
 # ==========================================
 
 # 定義年份變數 (Reactive)，讓它能控制地圖
-selected_year = solara.reactive(2024)
+selected_year = solara.reactive(2025)
 
 class EutrophicationMap(leafmap.Map):
     def __init__(self, year_val):
@@ -109,7 +115,7 @@ def Page():
             solara.Markdown("透過 NDCI 指標分析澎湖海域葉綠素濃度，**紅色**代表優養化風險較高區域。")
             
             # 這裡放入滑桿
-            solara.SliderInt(label="選擇年份", value=selected_year, min=2016, max=2025)
+            solara.SliderInt(label="選擇年份", value=selected_year, min=2015, max=2025)
             
             # 這裡放入地圖
             # 使用 .element() 將 Leafmap 嵌入 Solara
