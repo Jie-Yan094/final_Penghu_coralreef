@@ -44,49 +44,62 @@ ndci_data = {
 df_ndci = pd.DataFrame(ndci_data)
 
 # ==========================================
-# 2. 地圖組件 A：海溫地圖 (SST) - [新增]
+# 2. 地圖組件 A：海溫地圖 (SST) - [已升級]
 # ==========================================
 @solara.component
-def SSTMap(year):
+def SSTMap(year, period_type):
     """
-    顯示 JAXA GCOM-C 衛星的年平均海溫
+    顯示 JAXA GCOM-C 衛星的海溫 (支援切換 全年/夏季)
     """
     def get_sst_map_html():
         m = geemap.Map(center=[23.5, 119.5], zoom=10)
         roi = ee.Geometry.Rectangle([119.2741, 23.1695, 119.8114, 23.8792])
 
-        start_date = f'{year}-01-01'
-        end_date = f'{year}-12-31'
+        # 根據使用者選擇的類型設定時間範圍
+        if period_type == "夏季均溫":
+            # 珊瑚白化好發期 (6月-9月)
+            start_date = f'{year}-06-01'
+            end_date = f'{year}-09-30'
+            vis_min = 25 # 夏季溫度較高，拉高 min 讓對比更明顯
+            vis_max = 33
+            layer_title = f"{year} 夏季均溫 (6-9月)"
+        else:
+            # 全年平均
+            start_date = f'{year}-01-01'
+            end_date = f'{year}-12-31'
+            vis_min = 15 # 全年包含冬天，min 要低一點
+            vis_max = 32
+            layer_title = f"{year} 全年平均"
 
         try:
-            # JAXA GCOM-C 數據通常從 2018 年開始
+            # JAXA GCOM-C 數據
             img_collection = (
                 ee.ImageCollection('JAXA/GCOM-C/L3/OCEAN/SST/V3')
                 .filterBounds(roi)
                 .filterDate(start_date, end_date)
-                .filter(ee.Filter.eq('SATELLITE_DIRECTION', 'D')) # 只取白天數據
+                .filter(ee.Filter.eq('SATELLITE_DIRECTION', 'D')) # 只取白天
             )
 
             count = img_collection.size().getInfo()
             if count == 0:
                 return f"<div style='padding:20px;'>無 {year} 年的 JAXA SST 數據 (資料通常始於 2018)</div>"
 
-            # 使用中位數合成 (去雲/填補空缺)
+            # 使用中位數合成
             my_img_composite = img_collection.median().clip(roi)
 
             # 數值轉換 SST [°C] = SST_AVE * 0.0012 + (-10)
             dataset = my_img_composite.select('SST_AVE').multiply(0.0012).add(-10)
 
-            # 可視化參數 (設定 min=15, max=32 讓對比更明顯)
+            # 可視化參數 (動態調整 min/max)
             sst_vis = {
               "bands": ['SST_AVE'],
-              "min": 15, 
-              "max": 32,
+              "min": vis_min, 
+              "max": vis_max,
               "palette": ['000000', '005aff', '43c8c8', 'fff700', 'ff0000']
             }
 
-            m.addLayer(dataset, sst_vis, f"{year} 年平均海溫")
-            m.add_colorbar(sst_vis, label="海面溫度 (°C)", orientation='horizontal', layer_name=f"{year} SST")
+            m.addLayer(dataset, sst_vis, layer_title)
+            m.add_colorbar(sst_vis, label="海面溫度 (°C)", orientation='horizontal', layer_name=layer_title)
 
         except Exception as e:
             print(f"SST Map Error: {e}")
@@ -104,7 +117,8 @@ def SSTMap(year):
         except Exception as e:
             return f"<div>地圖生成錯誤: {str(e)}</div>"
 
-    map_html = solara.use_memo(get_sst_map_html, dependencies=[year])
+    # 注意：這裡 dependencies 多加了 period_type，切換按鈕時地圖才會重繪
+    map_html = solara.use_memo(get_sst_map_html, dependencies=[year, period_type])
 
     return solara.HTML(
         tag="iframe",
@@ -127,7 +141,7 @@ def NDCIMap(year):
     def get_ndci_map_html():
         m = geemap.Map(center=[23.5, 119.5], zoom=11)
         roi = ee.Geometry.Rectangle([119.2741, 23.1695, 119.8114, 23.8792])
-        start_date = f'{year}-05-01'
+        start_date = f'{year}-06-01'
         end_date = f'{year}-09-30'
 
         # 雙模式去雲邏輯
@@ -308,7 +322,7 @@ def NDCIChart():
         """, style="font-size: 0.9em; color: gray;")
 
 # ==========================================
-# 6. 頁面組件 (排版整合)
+# 6. 頁面組件 (更新海溫區塊)
 # ==========================================
 @solara.component
 def Page():
@@ -318,25 +332,30 @@ def Page():
             solara.Markdown("# 危害澎湖珊瑚礁之各項因子")
             
             # ==========================================
-            # 1. 海溫分布變化 (整合 SST Map)
+            # 1. 海溫分布變化 (SST)
             # ==========================================
             solara.Markdown("---")
             solara.Markdown("## 1. 海溫分布變化 (Sea Surface Temperature)")
             
             solara.Markdown("""
             珊瑚對水溫非常敏感。長期的異常高溫（超過 30°C）會導致珊瑚白化甚至死亡。
-            此圖使用 **JAXA GCOM-C 衛星** 觀測數據，顯示澎湖海域的年平均海溫分佈。
+            **夏季均溫**更能反映出珊瑚面臨的熱緊迫壓力。
             """)
 
             with solara.Card("🌡️ JAXA 衛星海溫監測"):
-                # 滑桿控制年份 (JAXA 資料約從 2018 開始)
-                solara.SliderInt(label="選擇年份", value=sst_year, min=2018, max=2025)
-                
-                # 顯示目前選擇的年份
-                solara.Markdown(f"### 📅 目前顯示年份：{sst_year.value}")
+                with solara.Row(style={"align-items": "center", "gap": "20px"}):
+                    # 1. 年份滑桿
+                    with solara.Column(style={"flex-grow": "1"}):
+                         solara.SliderInt(label="選擇年份", value=sst_year, min=2018, max=2025)
+                    
+                    # 2. 類型切換按鈕 (Toggle)
+                    with solara.Column():
+                        solara.ToggleButtons(value=sst_type, values=["全年平均", "夏季均溫"])
 
-                # 呼叫海溫地圖組件
-                SSTMap(sst_year.value)
+                solara.Markdown(f"### 📅 目前顯示：{sst_year.value} 年 - {sst_type.value}")
+
+                # 呼叫更新後的 SSTMap，傳入兩個參數
+                SSTMap(sst_year.value, sst_type.value)
             
             solara.Markdown("---")
             
