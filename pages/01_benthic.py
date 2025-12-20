@@ -58,7 +58,9 @@ color_map = {
 # ==========================================
 target_year = solara.reactive(2024)
 time_period = solara.reactive("夏季平均") 
-smoothing_radius = solara.reactive(30)   
+smoothing_radius = solara.reactive(30)
+# 新增：控制圖表切換的變數
+selected_chart = solara.reactive("📈 折線趨勢")
 
 # ==========================================
 # 3. 組件定義：地圖邏輯
@@ -127,7 +129,7 @@ def ReefHabitatMap(year, period, radius):
     return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "750px", "style": "border: none;"})
 
 # ==========================================
-# 4. 組件定義：數據分析
+# 4. 組件定義：數據分析 (手動分頁版)
 # ==========================================
 @solara.component
 def AnalysisDashboard():
@@ -149,32 +151,36 @@ def AnalysisDashboard():
         fig.update_layout(plot_bgcolor="white")
         return fig
 
-    # 使用 Card 包覆內容，並使用標準 Tabs
     with solara.Card("📊 歷年數據分析報告", style={"margin-top": "20px"}):
-        with solara.Tabs():  # <--- 修正：改用標準 Tabs
-            with solara.Tab("📈 折線趨勢"): # <--- 修正：改用標準 Tab
-                solara.FigurePlotly(create_line_chart())
-                solara.Info("說明：軟珊瑚為主要優勢物種，面積波動與氣候事件高度相關。")
+        # 1. 切換按鈕 (替代 Tabs，這一定會動)
+        solara.ToggleButtonsSingle(
+            value=selected_chart, 
+            values=["📈 折線趨勢", "📊 堆疊組成", "📋 原始數據"]
+        )
+        solara.Markdown("---")
+        
+        # 2. 根據按鈕值顯示對應內容
+        if selected_chart.value == "📈 折線趨勢":
+            solara.FigurePlotly(create_line_chart())
+            solara.Info("說明：軟珊瑚為主要優勢物種，面積波動與氣候事件高度相關。")
             
-            with solara.Tab("📊 堆疊組成"): # <--- 修正：改用標準 Tab
-                solara.FigurePlotly(create_bar_chart())
+        elif selected_chart.value == "📊 堆疊組成":
+            solara.FigurePlotly(create_bar_chart())
             
-            with solara.Tab("📋 原始數據"): # <--- 修正：改用標準 Tab
-                solara.DataFrame(df_analysis)
+        elif selected_chart.value == "📋 原始數據":
+            solara.DataFrame(df_analysis)
 
 # ==========================================
 # 5. 主頁面佈局
 # ==========================================
 @solara.component
 def Page():
-    # 使用 Column 垂直排列所有內容
     with solara.Column(style={"padding": "30px", "background-color": "#f4f7f9"}):
         solara.Title("澎湖珊瑚礁棲地動態監測系統")
         solara.Markdown(f"**系統狀態**: {init_status}")
 
-        # --- 第一部分：互動地圖 (Row 佈局) ---
+        # --- 第一部分：互動地圖 ---
         with solara.Row(style={"gap": "20px"}):
-            # 左側控制面板
             with solara.Column(style={"width": "350px"}):
                 with solara.Card("🔍 監測工具箱"):
                     solara.Markdown("#### 1. 時間範圍")
@@ -187,15 +193,13 @@ def Page():
                 with solara.Card("💡 說明"):
                     solara.Markdown("夏季平均聚焦 6-9 月影像；全年平均使用整年數據中值。")
 
-            # 右側地圖
             with solara.Column(style={"flex": "1"}):
                 with solara.Card(f"📍 {target_year.value} 年棲地分布"):
                     ReefHabitatMap(target_year.value, time_period.value, smoothing_radius.value)
 
-        # --- 分隔線 ---
         solara.Markdown("---")
 
-        # --- 第二部分：數據分析 (直接顯示在下方) ---
+        # --- 第二部分：數據分析 ---
         AnalysisDashboard()
 
 # 啟動 Page
