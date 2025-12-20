@@ -149,21 +149,21 @@ def AnalysisDashboard():
         fig.update_layout(plot_bgcolor="white")
         return fig
 
-    # 這裡的 Card 會放在地圖下方
+    # 使用 Card 包覆內容，並使用標準 Tabs
     with solara.Card("📊 歷年數據分析報告", style={"margin-top": "20px"}):
-        with solara.LabTabs():
-            with solara.LabTab("📈 折線趨勢"):
+        with solara.Tabs():  # <--- 修正：改用標準 Tabs
+            with solara.Tab("📈 折線趨勢"): # <--- 修正：改用標準 Tab
                 solara.FigurePlotly(create_line_chart())
                 solara.Info("說明：軟珊瑚為主要優勢物種，面積波動與氣候事件高度相關。")
             
-            with solara.LabTab("📊 堆疊組成"):
+            with solara.Tab("📊 堆疊組成"): # <--- 修正：改用標準 Tab
                 solara.FigurePlotly(create_bar_chart())
             
-            with solara.LabTab("📋 原始數據"):
+            with solara.Tab("📋 原始數據"): # <--- 修正：改用標準 Tab
                 solara.DataFrame(df_analysis)
 
 # ==========================================
-# 5. 主頁面佈局 (垂直堆疊版)
+# 5. 主頁面佈局
 # ==========================================
 @solara.component
 def Page():
