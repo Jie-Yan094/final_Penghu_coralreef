@@ -30,7 +30,9 @@ except Exception as e:
 # ==========================================
 # 1. 變數與資料定義
 # ==========================================
-selected_year = solara.reactive(2025)
+# 用於控制不同地圖的年份變數
+sst_year = solara.reactive(2024)      # 海溫預設年份
+selected_year = solara.reactive(2025) # NDCI 預設年份
 
 # 寫死 NDCI 統計數據 (2016-2025) 供圖表使用
 ndci_data = {
@@ -42,7 +44,80 @@ ndci_data = {
 df_ndci = pd.DataFrame(ndci_data)
 
 # ==========================================
-# 2. 地圖組件 A：優養化地圖 (NDCI)
+# 2. 地圖組件 A：海溫地圖 (SST) - [新增]
+# ==========================================
+@solara.component
+def SSTMap(year):
+    """
+    顯示 JAXA GCOM-C 衛星的年平均海溫
+    """
+    def get_sst_map_html():
+        m = geemap.Map(center=[23.5, 119.5], zoom=10)
+        roi = ee.Geometry.Rectangle([119.2741, 23.1695, 119.8114, 23.8792])
+
+        start_date = f'{year}-01-01'
+        end_date = f'{year}-12-31'
+
+        try:
+            # JAXA GCOM-C 數據通常從 2018 年開始
+            img_collection = (
+                ee.ImageCollection('JAXA/GCOM-C/L3/OCEAN/SST/V3')
+                .filterBounds(roi)
+                .filterDate(start_date, end_date)
+                .filter(ee.Filter.eq('SATELLITE_DIRECTION', 'D')) # 只取白天數據
+            )
+
+            count = img_collection.size().getInfo()
+            if count == 0:
+                return f"<div style='padding:20px;'>無 {year} 年的 JAXA SST 數據 (資料通常始於 2018)</div>"
+
+            # 使用中位數合成 (去雲/填補空缺)
+            my_img_composite = img_collection.median().clip(roi)
+
+            # 數值轉換 SST [°C] = SST_AVE * 0.0012 + (-10)
+            dataset = my_img_composite.select('SST_AVE').multiply(0.0012).add(-10)
+
+            # 可視化參數 (設定 min=15, max=32 讓對比更明顯)
+            sst_vis = {
+              "bands": ['SST_AVE'],
+              "min": 15, 
+              "max": 32,
+              "palette": ['000000', '005aff', '43c8c8', 'fff700', 'ff0000']
+            }
+
+            m.addLayer(dataset, sst_vis, f"{year} 年平均海溫")
+            m.add_colorbar(sst_vis, label="海面溫度 (°C)", orientation='horizontal', layer_name=f"{year} SST")
+
+        except Exception as e:
+            print(f"SST Map Error: {e}")
+            return f"<div>SST 地圖載入失敗: {e}</div>"
+
+        # 生成 HTML
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
+                temp_path = tmp.name
+            m.to_html(filename=temp_path)
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            os.remove(temp_path)
+            return html_content
+        except Exception as e:
+            return f"<div>地圖生成錯誤: {str(e)}</div>"
+
+    map_html = solara.use_memo(get_sst_map_html, dependencies=[year])
+
+    return solara.HTML(
+        tag="iframe",
+        attributes={
+            "srcDoc": map_html,
+            "width": "100%",
+            "height": "600px",
+            "style": "border: none; display: block; width: 100%;" 
+        }
+    )
+
+# ==========================================
+# 3. 地圖組件 B：優養化地圖 (NDCI)
 # ==========================================
 @solara.component
 def NDCIMap(year):
@@ -121,7 +196,7 @@ def NDCIMap(year):
     )
 
 # ==========================================
-# 3. 地圖組件 B：棘冠海星警戒地圖 (Starfish)
+# 4. 地圖組件 C：棘冠海星警戒地圖 (Starfish)
 # ==========================================
 @solara.component
 def StarfishMap():
@@ -177,7 +252,7 @@ def StarfishMap():
     )
 
 # ==========================================
-# 4. 圖表組件：NDCI 統計圖 (修正版)
+# 5. 圖表組件：NDCI 統計圖 (修正版)
 # ==========================================
 @solara.component
 def NDCIChart():
@@ -233,7 +308,7 @@ def NDCIChart():
         """, style="font-size: 0.9em; color: gray;")
 
 # ==========================================
-# 5. 頁面組件 (排版整合)
+# 6. 頁面組件 (排版整合)
 # ==========================================
 @solara.component
 def Page():
@@ -242,13 +317,32 @@ def Page():
         with solara.Column(style={"max-width": "1000px", "width": "100%"}):
             solara.Markdown("# 危害澎湖珊瑚礁之各項因子")
             
-            # --- 1. 海溫 ---
+            # ==========================================
+            # 1. 海溫分布變化 (整合 SST Map)
+            # ==========================================
             solara.Markdown("---")
-            solara.Markdown("## 1. 海溫分布變化")
-            solara.Markdown("*(預留海溫分析內容)*")
+            solara.Markdown("## 1. 海溫分布變化 (Sea Surface Temperature)")
+            
+            solara.Markdown("""
+            珊瑚對水溫非常敏感。長期的異常高溫（超過 30°C）會導致珊瑚白化甚至死亡。
+            此圖使用 **JAXA GCOM-C 衛星** 觀測數據，顯示澎湖海域的年平均海溫分佈。
+            """)
+
+            with solara.Card("🌡️ JAXA 衛星海溫監測"):
+                # 滑桿控制年份 (JAXA 資料約從 2018 開始)
+                solara.SliderInt(label="選擇年份", value=sst_year, min=2018, max=2025)
+                
+                # 顯示目前選擇的年份
+                solara.Markdown(f"### 📅 目前顯示年份：{sst_year.value}")
+
+                # 呼叫海溫地圖組件
+                SSTMap(sst_year.value)
+            
             solara.Markdown("---")
             
-            # --- 2. 優養化 (NDCI) ---
+            # ==========================================
+            # 2. 優養化 (NDCI)
+            # ==========================================
             solara.Markdown("## 2. 海洋優養化指標 (NDCI)")
             
             solara.Markdown("""
@@ -269,11 +363,13 @@ def Page():
                     solara.SliderInt(label="選擇年份", value=selected_year, min=2016, max=2025)
                     NDCIMap(selected_year.value)
                 
-                # 統計圖表區塊 (將剛剛算出來的 CSV 畫出來)
-                solara.Markdown("<br>") # 間距
+                # 統計圖表區塊
+                solara.Markdown("<br>")
                 NDCIChart()
 
-            # --- 3. 棘冠海星 ---
+            # ==========================================
+            # 3. 棘冠海星
+            # ==========================================
             with solara.Column(style={"width": "100%", "padding-top": "40px"}):
                 solara.Markdown("---")
                 solara.Markdown("## 3. 珊瑚礁生態系崩壞：棘冠海星的威脅")
@@ -342,11 +438,15 @@ def Page():
                 """)
                 solara.Markdown("---")
 
-            # --- 4. 人類活動 ---
+            # ==========================================
+            # 4. 人類活動
+            # ==========================================
             solara.Markdown("## 4. 人類活動影響")
             solara.Markdown("*(預留空間)*")
 
-            # --- 5. 參考資料 ---
+            # ==========================================
+            # 5. 參考資料
+            # ==========================================
             solara.Markdown("## 5. 參考資料")
             solara.Markdown("""
             * 1.開放博物館．棘寥之海：從棘冠海星看見生態的臨界點．https://openmuseum.tw/muse/exhibition/403675c2280b4d08a8c7c19ab71f51e1#imgs-gghuozn6go
