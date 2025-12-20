@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 # ==========================================
 def initialize_ee():
     try:
-        token = os.environ.get('EARTHENGINE_TOKEN')
+        token = os.environ.get('EARTHENGINE_TOKEN_2')
         if token:
             try:
                 info = json.loads(token)
