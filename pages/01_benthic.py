@@ -118,13 +118,11 @@ def ReefHabitatMap(year, period, radius):
         m.addLayer(water_target, s2_vis, f"{year} {period} 底圖")
         m.addLayer(classified, class_vis, f"{year} 棲地分類結果")
         
-        # 修正圖例參數
         m.add_legend(title="棲地類別", labels=["無數據", "沙地", "沙/藻", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=class_vis['palette'])
         
-        # ★★★ 關鍵修正：將 HTML 輸出至 /tmp (可寫入目錄) ★★★
-        # 避免 Hugging Face Space 的 Read-only file system 錯誤
+        # ★★★ 修正處：將 outfile 改為 filename ★★★
         output_path = f"/tmp/map_{int(time.time())}.html"
-        return m.to_html(outfile=output_path)
+        return m.to_html(filename=output_path)
 
     map_html = solara.use_memo(get_map_html, dependencies=[year, period, radius])
     return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "750px", "style": "border: none;"})
