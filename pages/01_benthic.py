@@ -62,18 +62,20 @@ def ReefHabitatMap(year, period, radius):
 
         # D. 訓練模型 (固定以 2018 全年數據作為穩定基準)
         img_train = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
-                    .filterBounds(roi).filterDate('2018-01-01', '2018-12-31')
-                    .median().clip(roi).select('B.*'))
+                     .filterBounds(roi).filterDate('2018-01-01', '2018-12-31')
+                     .median().clip(roi).select('B.*'))
+        
         mask_train = smooth(img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), radius)
         
+        # --- 修正開始 ---
+        # 原本錯誤: .remap(..., 'benthic') -> 字串錯誤
+        # 修正後:   .remap(..., 0)         -> 數字正確 (未匹配的像素設為 0)
         label_img = ee.Image('ACA/reef_habitat/v2_0').clip(roi).remap(
-            [0, 11, 12, 13, 14, 15, 18], [0, 1, 2, 3, 4, 5, 6], 'benthic'
+            [0, 11, 12, 13, 14, 15, 18], 
+            [0, 1, 2, 3, 4, 5, 6], 
+            0  # <--- 這裡原本是 'benthic'，請改成 0
         ).rename('benthic').toByte()
-        
-        classifier = ee.Classifier.smileRandomForest(100).train(
-            img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(numPoints=3000, classBand='benthic', region=roi, scale=10),
-            'benthic', img_train.bandNames()
-        )
+        # --- 修正結束 ---
 
         # E. 處理目標年份影像 (依據選擇的夏季或全年)
         target_img = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
