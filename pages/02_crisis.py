@@ -30,9 +30,9 @@ except Exception as e:
 # ==========================================
 # 1. 變數與資料定義
 # ==========================================
-# 用於控制不同地圖的年份變數
-sst_year = solara.reactive(2024)      # 海溫預設年份
-selected_year = solara.reactive(2025) # NDCI 預設年份
+sst_year = solara.reactive(2024)      # 海溫年份
+sst_type = solara.reactive("夏季均溫") # 海溫統計類型
+selected_year = solara.reactive(2025) # NDCI 年份
 
 # 寫死 NDCI 統計數據 (2016-2025) 供圖表使用
 ndci_data = {
@@ -44,7 +44,7 @@ ndci_data = {
 df_ndci = pd.DataFrame(ndci_data)
 
 # ==========================================
-# 2. 地圖組件 A：海溫地圖 (SST) - [已升級]
+# 2. 地圖組件 A：海溫地圖 (SST)
 # ==========================================
 @solara.component
 def SSTMap(year, period_type):
@@ -117,7 +117,6 @@ def SSTMap(year, period_type):
         except Exception as e:
             return f"<div>地圖生成錯誤: {str(e)}</div>"
 
-    # 注意：這裡 dependencies 多加了 period_type，切換按鈕時地圖才會重繪
     map_html = solara.use_memo(get_sst_map_html, dependencies=[year, period_type])
 
     return solara.HTML(
@@ -141,7 +140,7 @@ def NDCIMap(year):
     def get_ndci_map_html():
         m = geemap.Map(center=[23.5, 119.5], zoom=11)
         roi = ee.Geometry.Rectangle([119.2741, 23.1695, 119.8114, 23.8792])
-        start_date = f'{year}-06-01'
+        start_date = f'{year}-05-01'
         end_date = f'{year}-09-30'
 
         # 雙模式去雲邏輯
@@ -266,7 +265,7 @@ def StarfishMap():
     )
 
 # ==========================================
-# 5. 圖表組件：NDCI 統計圖 (修正版)
+# 5. 圖表組件：NDCI 統計圖 (已包含 titlefont 修正)
 # ==========================================
 @solara.component
 def NDCIChart():
@@ -297,7 +296,7 @@ def NDCIChart():
         fig.update_layout(
             title='NDCI 夏季平均值 vs 有效影像數量',
             xaxis=dict(title='年份', tickmode='linear'),
-            # --- 修正開始：將 titlefont 改為 title=dict(text=..., font=...) ---
+            # 修正：titlefont 改為 title=dict(font=...)
             yaxis=dict(
                 title=dict(text='NDCI 指數', font=dict(color="#00CC96")),
                 tickfont=dict(color="#00CC96")
@@ -308,7 +307,6 @@ def NDCIChart():
                 overlaying='y',
                 side='right'
             ),
-            # --- 修正結束 ---
             legend=dict(x=0.01, y=0.99),
             hovermode="x unified",
             margin=dict(l=40, r=40, t=40, b=40)
@@ -322,7 +320,7 @@ def NDCIChart():
         """, style="font-size: 0.9em; color: gray;")
 
 # ==========================================
-# 6. 頁面組件 (更新海溫區塊)
+# 6. 頁面組件 (排版整合)
 # ==========================================
 @solara.component
 def Page():
@@ -348,13 +346,13 @@ def Page():
                     with solara.Column(style={"flex-grow": "1"}):
                          solara.SliderInt(label="選擇年份", value=sst_year, min=2018, max=2025)
                     
-                    # 2. 類型切換按鈕 (Toggle)
+                    # 2. 類型切換按鈕 (已修正為 ToggleButtonsSingle)
                     with solara.Column():
-                        solara.ToggleButtons(value=sst_type, values=["全年平均", "夏季均溫"])
+                        solara.ToggleButtonsSingle(value=sst_type, values=["全年平均", "夏季均溫"])
 
                 solara.Markdown(f"### 📅 目前顯示：{sst_year.value} 年 - {sst_type.value}")
 
-                # 呼叫更新後的 SSTMap，傳入兩個參數
+                # 呼叫海溫地圖組件
                 SSTMap(sst_year.value, sst_type.value)
             
             solara.Markdown("---")
@@ -413,7 +411,7 @@ def Page():
                     # 右邊：文字區塊
                     with solara.Div(style={"flex": "1 1 400px", "min-width": "300px"}):
                         solara.Markdown("""
-                        ### 🌊 好餓好餓的珊瑚礁大胃王--棘冠海星(Crown-of-thorns Starfish) 
+                        ### 🌊 好餓好餓的珊瑚礁大胃王--棘冠海星(Crown-of-thorns Starfish)
                         近年來，澎湖海域傳出**棘冠海星**（俗稱魔鬼海星）異常增生的警訊。這種海星以珊瑚為食，當數量過多時，會對珊瑚礁生態系造成嚴重破壞，導致珊瑚覆蓋率大幅下降，生態平衡面臨威脅。
                         
                         **⚠️ 澎湖海域現況**：
