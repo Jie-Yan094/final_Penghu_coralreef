@@ -344,37 +344,40 @@ def Page():
         with solara.Card("1. 海溫異常 (SST)"):
             solara.Markdown("長期的高溫會導致珊瑚白化。下圖結合了 **衛星監測 (MODIS/JAXA)** 與 **珊瑚礁生態調查**。")
             
-            with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
+            # 使用 flex-wrap: wrap 確保響應式換行
+            with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
+                
                 # 左側：地圖與控制項
-                with solara.Column(style={"flex": "1", "min-width": "350px"}):
+                # 修改：將 min-width 提高到 450px 或 500px，強迫窄螢幕換行
+                with solara.Column(style={"flex": "1", "min-width": "450px"}):
                     solara.Markdown("### 🗺️ 衛星海溫分佈")
                     with solara.Row():
-                        # ✅ 修改：將 min 改為 2016
                         solara.SliderInt(label="年份", value=sst_year, min=2016, max=2025)
                         solara.ToggleButtonsSingle(value=sst_type, values=["全年平均", "夏季均溫"])
                     
-                    # 顯示目前的資料來源提示
                     source_hint = "NASA MODIS" if sst_year.value < 2018 else "JAXA GCOM-C"
-                    solara.Markdown(f"*當前資料來源: **{source_hint}*** (解析度差異為衛星特性)", style="font-size: 12px; color: gray; margin-top: -10px;")
+                    solara.Markdown(f"*資料來源: **{source_hint}*** (解析度差異為衛星特性)", style="font-size: 12px; color: gray; margin-top: -10px;")
                     
+                    # 呼叫地圖 (這裡使用您之前定義好的 SSTMap)
                     SSTMap(sst_year.value, sst_type.value)
                 
                 # 右側：統計圖表
-                with solara.Column(style={"flex": "1", "min-width": "350px"}):
+                # 修改：同樣提高 min-width
+                with solara.Column(style={"flex": "1", "min-width": "450px"}):
                     solara.Markdown("### 📈 環境 vs 生態")
-                    SSTCoralChart() # 請確保上方有定義此函數
+                    SSTCoralChart()
                     solara.Info("圖表說明：紅線為海溫(壓力源)，藍柱為珊瑚總面積(受體)。")
 
         # --- 2. 優養化區塊 ---
         with solara.Card("2. 海洋優養化 (NDCI)"):
             solara.Markdown("監測夏季水體葉綠素濃度，紅色代表優養化風險高。")
             
-            with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
-                with solara.Column(style={"flex": "1", "min-width": "350px"}):
+            with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
+                with solara.Column(style={"flex": "1", "min-width": "450px"}):
                     solara.SliderInt(label="年份", value=ndci_year, min=2016, max=2025)
                     NDCIMap(ndci_year.value)
                 
-                with solara.Column(style={"flex": "1", "min-width": "350px"}):
+                with solara.Column(style={"flex": "1", "min-width": "450px"}):
                     NDCIChart()
                     solara.Markdown("""
                     * **資料來源**: Sentinel-2 衛星
@@ -383,13 +386,12 @@ def Page():
 
         # --- 3. 棘冠海星區塊 ---
         with solara.Card("3. 好餓好餓的珊瑚礁大胃王:棘冠海星 (Crown-of-thorns Starfish)"):
-            solara.Markdown("想要把這些區域跟分類結果疊在一起，計算這些區域的硬珊瑚年變化面積")
+            solara.Markdown("想拿分類好的圖疊這些區域畫出來，然後分別計算每個區域的每年的硬珊瑚礁面積做統計圖表看趨勢。")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap-reverse"}):
-                # 左側：文字與地圖
-                with solara.Column(style={"flex": "3", "min-width": "300px"}):
+                # 地圖
+                with solara.Column(style={"flex": "3", "min-width": "400px"}):
                     solara.Markdown("### 🚨 爆發警戒區域")
                     StarfishMap()
-                    
                     with solara.Details(summary="點擊查看：棘冠海星大爆發的原因？"):
                         solara.Markdown("""
                         1. **營養鹽增加**：人類污水排放導致浮游生物增加，提供幼體食物。
@@ -397,8 +399,8 @@ def Page():
                         3. **氣候變遷**：暖化有利於幼體發育。
                         """)
                 
-                # 右側：圖片與介紹
-                with solara.Column(style={"flex": "2", "min-width": "250px", "background-color": "#f8f9fa", "padding": "15px", "border-radius": "10px"}):
+                # 圖片與介紹
+                with solara.Column(style={"flex": "2", "min-width": "300px", "background-color": "#f8f9fa", "padding": "15px", "border-radius": "10px"}):
                     solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg", width="100%")
                     solara.Markdown("""
                     **棘冠海星 (魔鬼海星)**
@@ -409,7 +411,7 @@ def Page():
 
         # --- 4. 人類活動 ---
         with solara.Card("4. 人類活動影響"):
-            solara.Markdown("*(此區域正進行資料彙整中，預計加入海洋垃圾、漁網)*")
+            solara.Markdown("*(此區域正進行資料彙整中，預計加入漁業活動熱點分析)*")
 
         solara.Markdown("---")
-        solara.Markdown("資料來源：JAXA GCOM-C, ESA Sentinel-2, 海洋保育署 | Update: 2025.12")
+        solara.Markdown("資料來源：NASA MODIS, JAXA GCOM-C, ESA Sentinel-2, 海洋保育署 | Update: 2025.12")
