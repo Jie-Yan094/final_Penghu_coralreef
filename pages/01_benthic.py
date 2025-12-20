@@ -9,24 +9,29 @@ import plotly.graph_objects as go
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. GEE 驗證與初始化
+# 0. 強健的 GEE 初始化
 # ==========================================
 def initialize_ee():
     try:
-        key_content = os.environ.get('EARTHENGINE_TOKEN')
-        if key_content:
-            service_account_info = json.loads(key_content)
-            creds = Credentials.from_service_account_info(
-                service_account_info,
-                scopes=['https://www.googleapis.com/auth/earthengine']
-            )
-            ee.Initialize(credentials=creds, project='ee-s1243037-0')
-            return "✅ 雲端環境驗證成功"
+        # 先檢查有沒有環境變數
+        token = os.environ.get('EARTHENGINE_TOKEN')
+        if token:
+            # 這裡最容易因為 JSON 格式不對而報錯
+            try:
+                info = json.loads(token)
+                creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/earthengine'])
+                ee.Initialize(credentials=creds, project='ee-s1243037-0')
+                return "✅ 雲端認證成功"
+            except Exception as json_err:
+                return f"❌ JSON 格式錯誤: {json_err}"
         else:
+            # 本地環境預設認證
             ee.Initialize(project='ee-s1243037-0')
-            return "⚠️ 本機環境預設驗證"
+            return "⚠️ 本機環境認證"
     except Exception as e:
-        return f"❌ 初始化失敗: {e}"
+        # 將錯誤印出到控制台
+        print(f"CRITICAL STARTUP ERROR: {e}")
+        return f"❌ 系統崩潰: {e}"
 
 init_status = initialize_ee()
 
