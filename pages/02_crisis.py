@@ -30,27 +30,49 @@ except Exception as e:
 # ==========================================
 # 1. 全域設定與資料準備
 # ==========================================
-# 定義澎湖感興趣區域 (ROI) - 避免重複定義
+# 定義澎湖感興趣區域 (ROI)
 ROI_RECT = ee.Geometry.Rectangle([119.2741, 23.1695, 119.8114, 23.8792])
 ROI_CENTER = [23.5, 119.5]
 
 # Reactive 變數
-sst_year = solara.reactive(2021)      # 海溫地圖年份
+sst_year = solara.reactive(2024)      # 海溫地圖年份
 sst_type = solara.reactive("夏季均溫") # 海溫統計類型
-ndci_year = solara.reactive(2024)     # NDCI 地圖年份
+ndci_year = solara.reactive(2025)     # NDCI 地圖年份
 
-# --- 資料準備 A: SST 資料拼接 (邏輯：2018前用新資料，2018後用舊資料) ---
-# 1. 新資料 (補足 2016-2017)
-data_sst_new = {
-    'Year': [2016, 2017],
-    'SST_Summer_Avg': [28.19, 28.51]
-}
-# 2. 舊資料 (2018-2025, 模擬您原本的資料，請確認數據)
-data_sst_old = {
-    'Year': [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
-    'SST_Summer_Avg': [28.07, 27.83, 28.52, 28.44, 28.30, 28.45, 29.10, 28.80] # 後4年為模擬數據，請替換回您的真實數據
-}
-df_sst = pd.concat([pd.DataFrame(data_sst_new), pd.DataFrame(data_sst_old)]).sort_values('Year').reset_index(drop=True)
+# --- 資料準備 A: 整合 SST 與 珊瑚礁面積 ---
+years_list = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+
+# 1. 夏季海溫數據 (SST_Summer_Avg)
+# 來源: 2016-17(文獻) + 2018-25(您的計算截圖)
+sst_values = [
+    28.19, 28.51,    # 2016, 2017
+    28.16, 27.75, 28.62, 28.37, 28.29, # 2018-2022
+    28.02, 28.95, 28.43  # 2023-2025
+]
+
+# 2. 珊瑚礁面積數據 (Total Coral Area = 硬珊瑚 + 軟珊瑚)
+# 來源: 您的生態調查截圖
+# 2016: 342.08 + 32272.96 = 32615.04
+# 2017: 92.92 + 10536.69 = 10629.61
+# 2018: 1584.55 + 27021.9 = 28606.45
+# 2019: 382.45 + 39909.48 = 40291.93
+# 2020: 76.97 + 13074.81 = 13151.78
+# 2021: 197.21 + 22751.79 = 22949.00
+# 2022: 95.55 + 15645.1 = 15740.65
+# 2023: 224.21 + 25062.07 = 25286.28
+# 2024: 239.71 + 42610.23 = 42849.94
+# 2025: 1264.49 + 26497.39 = 27761.88
+
+coral_area_values = [
+    32615.0, 10629.6, 28606.5, 40291.9, 13151.8, 
+    22949.0, 15740.7, 25286.3, 42849.9, 27761.9
+]
+
+df_mixed = pd.DataFrame({
+    'Year': years_list,
+    'SST_Summer': sst_values,
+    'Coral_Area': coral_area_values
+})
 
 # --- 資料準備 B: NDCI 資料 ---
 ndci_data = {
@@ -81,7 +103,7 @@ def save_map_to_html(m):
             os.remove(temp_path)
 
 # ==========================================
-# 3. 組件：SST 相關 (地圖 + 圖表)
+# 3. 組件：SST 相關 (地圖 + 雙軸圖表)
 # ==========================================
 @solara.component
 def SSTMap(year, period_type):
@@ -128,26 +150,65 @@ def SSTMap(year, period_type):
     return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "500px", "style": "border:none;"})
 
 @solara.component
-def SSTChart():
-    # 建立 SST 折線圖
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df_sst['Year'], y=df_sst['SST_Summer_Avg'],
-        mode='lines+markers', name='夏季均溫',
-        line=dict(color='#FF5733', width=3), marker=dict(size=8)
-    ))
-    
-    # 標示 2018 分界線
-    fig.add_vline(x=2017.5, line_width=1, line_dash="dash", line_color="gray")
-    fig.add_annotation(x=2017.5, y=df_sst['SST_Summer_Avg'].max(), text="資料來源變更", showarrow=False, yshift=10)
+def SSTCoralChart():
+    """海溫與珊瑚礁面積雙軸圖表"""
+    with solara.Card("📊 關聯分析：海溫 vs 珊瑚礁面積 (硬珊瑚+軟珊瑚)"):
+        fig = go.Figure()
 
-    fig.update_layout(
-        title='歷年夏季海溫趨勢 (拼接資料)',
-        xaxis_title='年份', yaxis_title='溫度 (°C)',
-        hovermode="x unified", margin=dict(l=40, r=40, t=40, b=40),
-        height=350
-    )
-    solara.FigurePlotly(fig)
+        # 1. 珊瑚礁面積 (長條圖 - 底層)
+        fig.add_trace(go.Bar(
+            x=df_mixed['Year'],
+            y=df_mixed['Coral_Area'],
+            name='珊瑚礁總面積 (m²)',
+            marker_color='rgba(52, 152, 219, 0.6)',
+            yaxis='y2'
+        ))
+
+        # 2. 夏季海溫 (折線圖 - 上層)
+        fig.add_trace(go.Scatter(
+            x=df_mixed['Year'],
+            y=df_mixed['SST_Summer'],
+            name='夏季均溫 (°C)',
+            mode='lines+markers',
+            line=dict(color='#e74c3c', width=4),
+            marker=dict(size=10, color='#c0392b', symbol='circle')
+        ))
+
+        fig.update_layout(
+            title='環境壓力與生態影響趨勢圖',
+            xaxis=dict(title='年份', tickmode='linear', dtick=1),
+            # 左軸 (溫度)
+            yaxis=dict(
+                title=dict(text='海面溫度 (°C)', font=dict(color="#e74c3c")),
+                tickfont=dict(color="#e74c3c"),
+                range=[27, 29.5], # 調整刻度範圍讓波動更明顯
+                side='left'
+            ),
+            # 右軸 (面積)
+            yaxis2=dict(
+                title=dict(text='珊瑚礁面積 (硬+軟)', font=dict(color="#3498db")),
+                tickfont=dict(color="#3498db"),
+                overlaying='y',
+                side='right',
+                range=[0, 50000] # 根據您的數據最大值約 42k 調整
+            ),
+            legend=dict(x=0.01, y=1.1, orientation="h"),
+            hovermode="x unified",
+            margin=dict(l=50, r=50, t=60, b=50),
+            height=400
+        )
+        solara.FigurePlotly(fig)
+        
+        # 數據觀察
+        max_temp_year = df_mixed.loc[df_mixed['SST_Summer'].idxmax()]['Year']
+        max_temp = df_mixed['SST_Summer'].max()
+        
+        solara.Markdown(f"""
+        * **數據說明**：珊瑚礁面積包含「硬珊瑚」與「軟珊瑚」之總和。
+        * **觀察重點**：
+            1. **{int(max_temp_year)} 年** 觀測到最高夏季均溫 (**{max_temp:.2f}°C**)。
+            2. 2017 與 2020 年珊瑚面積有顯著下降，可對照當時的海溫或颱風事件進行分析。
+        """, style="font-size: 0.9em; color: gray;")
 
 # ==========================================
 # 4. 組件：NDCI 相關
@@ -183,7 +244,7 @@ def NDCIMap(year):
             m.addLayer(img_med.select('NDCI'), ndci_vis, 'NDCI')
             m.add_colorbar(ndci_vis, label="NDCI", layer_name='NDCI')
         except Exception:
-            pass # 忽略圖層錯誤，通常是沒影像
+            pass 
 
         return save_map_to_html(m)
 
@@ -205,8 +266,15 @@ def NDCIChart():
     fig.update_layout(
         title='NDCI 夏季平均值 vs 影像數量',
         xaxis=dict(title='年份', tickmode='linear'),
-        yaxis=dict(title='NDCI 指數', titlefont=dict(color="#00CC96"), tickfont=dict(color="#00CC96")),
-        yaxis2=dict(title='影像數量', titlefont=dict(color="#636EFA"), tickfont=dict(color="#636EFA"), overlaying='y', side='right'),
+        yaxis=dict(
+            title=dict(text='NDCI 指數', font=dict(color="#00CC96")), 
+            tickfont=dict(color="#00CC96")
+        ),
+        yaxis2=dict(
+            title=dict(text='影像數量 (張)', font=dict(color="#636EFA")), 
+            tickfont=dict(color="#636EFA"), 
+            overlaying='y', side='right'
+        ),
         legend=dict(x=0.01, y=0.99), hovermode="x unified", margin=dict(t=40, b=40), height=350
     )
     solara.FigurePlotly(fig)
@@ -220,7 +288,6 @@ def StarfishMap():
         m = geemap.Map(center=[23.25, 119.55], zoom=11)
         m.add_basemap("HYBRID")
         
-        # 定義警戒區
         zones = [
             ee.Feature(ee.Geometry.Rectangle([119.408, 23.185, 119.445, 23.215]), {'name': '七美嶼'}),
             ee.Feature(ee.Geometry.Rectangle([119.658, 23.250, 119.680, 23.265]), {'name': '東吉嶼'}),
@@ -246,7 +313,7 @@ def Page():
         
         # --- 1. 海溫區塊 ---
         with solara.Card("1. 海溫異常 (SST)"):
-            solara.Markdown("長期的高溫會導致珊瑚白化。下圖結合了 **JAXA 衛星監測** 與 **歷年統計數據**。")
+            solara.Markdown("長期的高溫會導致珊瑚白化。下圖結合了 **JAXA 衛星監測** 與 **珊瑚礁生態調查**。")
             
             with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
                 # 左側：地圖與控制項
@@ -259,9 +326,9 @@ def Page():
                 
                 # 右側：統計圖表
                 with solara.Column(style={"flex": "1", "min-width": "350px"}):
-                    solara.Markdown("### 📈 歷年溫度趨勢")
-                    SSTChart()
-                    solara.Info("註：2016-2017 為補充數據，2018 起採用校正後資料庫。")
+                    solara.Markdown("### 📈 環境 vs 生態")
+                    SSTCoralChart()
+                    solara.Info("圖表說明：紅線為海溫(壓力源)，藍柱為珊瑚總面積(受體)。")
 
         # --- 2. 優養化區塊 ---
         with solara.Card("2. 海洋優養化 (NDCI)"):
@@ -275,9 +342,8 @@ def Page():
                 with solara.Column(style={"flex": "1", "min-width": "350px"}):
                     NDCIChart()
                     solara.Markdown("""
-                    * **2016-2018**: Sentinel-2 TOA 數據 (NDWI 去雲)
-                    * **2019-2025**: Sentinel-2 SR 數據 (SCL 去雲)
-                    * **趨勢**: 2022 年後 NDCI 指數呈現上升趨勢，需持續關注。
+                    * **資料來源**: Sentinel-2 衛星
+                    * **趨勢**: 2022 年後 NDCI 指數呈現上升趨勢。
                     """, style="font-size: 0.9em; color: gray;")
 
         # --- 3. 棘冠海星區塊 ---
@@ -288,7 +354,6 @@ def Page():
                     solara.Markdown("### 🚨 爆發警戒區域")
                     StarfishMap()
                     
-                    # 修正：將 ExpansionPanel 改為 Details
                     with solara.Details(summary="點擊查看：棘冠海星大爆發的原因？"):
                         solara.Markdown("""
                         1. **營養鹽增加**：人類污水排放導致浮游生物增加，提供幼體食物。
