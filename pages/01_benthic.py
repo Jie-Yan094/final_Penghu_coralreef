@@ -60,40 +60,61 @@ def ReefHabitatMap(year, period, radius):
         def smooth(mask, r):
             return mask.focal_mode(radius=r, units='meters', kernelType='circle')
 
-        # D. 訓練模型 (固定以 2018 全年數據作為穩定基準)
+        # D. 訓練模型
         img_train = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
                      .filterBounds(roi).filterDate('2018-01-01', '2018-12-31')
                      .median().clip(roi).select('B.*'))
         
-        mask_train = smooth(img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), radius)
-        
-        # 1. 修正後的 label_img (這部分您應該已經修好了)
+        # 優化：如果半徑為 0，就不執行消耗巨大的 focal_mode
+        if radius > 0:
+             mask_train_raw = img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
+             mask_train = smooth(mask_train_raw, radius)
+        else:
+             mask_train = img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
+
+        # 修正 remap 參數，並確保數值型別正確
         label_img = ee.Image('ACA/reef_habitat/v2_0').clip(roi).remap(
             [0, 11, 12, 13, 14, 15, 18], 
             [0, 1, 2, 3, 4, 5, 6], 
-            0 
+            0
         ).rename('benthic').toByte()
         
-        # 2. 補回這段：定義並訓練 classifier
-        classifier = ee.Classifier.smileRandomForest(100).train(
-            img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(
-                numPoints=3000, classBand='benthic', region=roi, scale=10
-            ),
-            'benthic', img_train.bandNames()
+        # ★★★ 關鍵修正：加入 tileScale 並減少 numPoints ★★★
+        # numPoints: 降至 1000 以節省記憶體
+        # tileScale: 設為 8 或 16，允許 GEE 切碎計算以避免 OOM (Out Of Memory)
+        sample = img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(
+            numPoints=1000, 
+            classBand='benthic', 
+            region=roi, 
+            scale=10, 
+            tileScale=8,  # 重要！
+            geometries=False
         )
 
-        # E. 處理目標年份影像 (依據選擇的夏季或全年)
+        # 稍微減少樹的數量 (100 -> 50) 也可以顯著提升即時渲染速度
+        classifier = ee.Classifier.smileRandomForest(50).train(
+            sample, 'benthic', img_train.bandNames()
+        )
+
+        # E. 處理目標年份影像
         target_img = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
                       .filterBounds(roi).filterDate(start_date, end_date)
                       .median().clip(roi).select('B.*'))
         
-        # 生成遮罩並平滑化以填補孔洞
-        mask_target = smooth(target_img.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), radius)
-        water_target = target_img.updateMask(mask_target)
+        # 優化平滑邏輯
+        target_ndwi_mask = target_img.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
         
-        # 執行分類並再次平滑化結果
-        classified = water_target.classify(classifier).focal_mode(radius=radius, units='meters')
-
+        if radius > 0:
+            mask_target = smooth(target_ndwi_mask, radius)
+            # 分類後再平滑
+            water_target = target_img.updateMask(mask_target)
+            classified_raw = water_target.classify(classifier)
+            classified = classified_raw.focal_mode(radius=radius, units='meters')
+        else:
+            mask_target = target_ndwi_mask
+            water_target = target_img.updateMask(mask_target)
+            classified = water_target.classify(classifier)
+            
         # F. 可視化
         s2_vis = {'min': 100, 'max': 3500, 'bands': ['B4', 'B3', 'B2']}
         class_vis = {'min': 0, 'max': 6, 'palette': ['000000', 'ffffbe', 'e0d05e', 'b19c3a', '668438', 'ff6161', '9bcc4f']}
