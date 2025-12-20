@@ -107,9 +107,15 @@ def save_map_to_html(m):
 # ==========================================
 @solara.component
 def SSTMap(year, period_type):
+    """
+    海溫地圖組件：
+    - 2016-2017: 使用 NASA MODIS-Aqua (L3SMI)
+    - 2018-2025: 使用 JAXA GCOM-C (SGLI)
+    """
     def get_sst_map_html():
         m = geemap.Map(center=ROI_CENTER, zoom=10)
         
+        # 1. 設定時間範圍
         if period_type == "夏季均溫":
             start_date, end_date = f'{year}-06-01', f'{year}-09-30'
             vis_min, vis_max = 25, 33
@@ -120,29 +126,52 @@ def SSTMap(year, period_type):
             layer_title = f"{year} 全年平均"
 
         try:
-            # JAXA GCOM-C 
-            img_collection = (
-                ee.ImageCollection('JAXA/GCOM-C/L3/OCEAN/SST/V3')
-                .filterBounds(ROI_RECT)
-                .filterDate(start_date, end_date)
-                .filter(ee.Filter.eq('SATELLITE_DIRECTION', 'D'))
-            )
-            
-            if img_collection.size().getInfo() == 0:
-                return f"<div style='padding:20px; color: gray;'>⚠️ 無 {year} 年 JAXA SST 數據 (資料可能尚未更新或該年無數據)</div>"
+            # 2. 判斷年份切換資料源
+            if year < 2018:
+                # --- A 方案: 2016-2017 使用 NASA MODIS ---
+                source_name = "NASA MODIS-Aqua"
+                # MODIS L3SMI 資料集
+                img_collection = (
+                    ee.ImageCollection("NASA/OCEANDATA/MODIS-Aqua/L3SMI")
+                    .filterBounds(ROI_RECT)
+                    .filterDate(start_date, end_date)
+                    .select('sst') # MODIS 的海溫波段名稱通常是 'sst'
+                )
+                
+                # MODIS 的數值通常已經是攝氏溫度，不需要額外轉換公式 (或需確認是否為 raw DN)
+                # 一般 GEE 的 L3SMI 'sst' 波段單位即為攝氏度
+                dataset = img_collection.median().clip(ROI_RECT)
+                
+            else:
+                # --- B 方案: 2018-2025 使用 JAXA GCOM-C ---
+                source_name = "JAXA GCOM-C"
+                img_collection = (
+                    ee.ImageCollection('JAXA/GCOM-C/L3/OCEAN/SST/V3')
+                    .filterBounds(ROI_RECT)
+                    .filterDate(start_date, end_date)
+                    .filter(ee.Filter.eq('SATELLITE_DIRECTION', 'D'))
+                )
+                
+                # JAXA 需要轉換公式: SST [°C] = SST_AVE * 0.0012 + (-10)
+                dataset = img_collection.median().clip(ROI_RECT).select('SST_AVE').multiply(0.0012).add(-10)
 
-            # 數值轉換 SST [°C] = SST_AVE * 0.0012 + (-10)
-            dataset = img_collection.median().clip(ROI_RECT).select('SST_AVE').multiply(0.0012).add(-10)
-            
+            # 3. 檢查是否有資料
+            if img_collection.size().getInfo() == 0:
+                return f"<div style='padding:20px; color: gray;'>⚠️ 無 {year} 年 {source_name} 數據</div>"
+
+            # 4. 設定視覺化參數 (兩者共用相同的色階，方便比較)
             sst_vis = {
               "min": vis_min, "max": vis_max,
               "palette": ['000000', '005aff', '43c8c8', 'fff700', 'ff0000']
             }
-            m.addLayer(dataset, sst_vis, layer_title)
-            m.add_colorbar(sst_vis, label="海面溫度 (°C)", orientation='horizontal', layer_name=layer_title)
+            
+            # 加入圖層
+            full_title = f"{layer_title} ({source_name})"
+            m.addLayer(dataset, sst_vis, full_title)
+            m.add_colorbar(sst_vis, label="海面溫度 (°C)", orientation='horizontal', layer_name=full_title)
             
         except Exception as e:
-            return f"<div>SST 載入失敗: {e}</div>"
+            return f"<div>SST 地圖載入失敗: {e}</div>"
 
         return save_map_to_html(m)
 
@@ -303,7 +332,7 @@ def StarfishMap():
     return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "400px", "style": "border:none;"})
 
 # ==========================================
-# 6. 主頁面
+# 6. 主頁面 (更新年份滑桿範圍)
 # ==========================================
 @solara.component
 def Page():
@@ -313,21 +342,27 @@ def Page():
         
         # --- 1. 海溫區塊 ---
         with solara.Card("1. 海溫異常 (SST)"):
-            solara.Markdown("長期的高溫會導致珊瑚白化。下圖結合了 **JAXA 衛星監測** 與 **珊瑚礁生態調查**。")
+            solara.Markdown("長期的高溫會導致珊瑚白化。下圖結合了 **衛星監測 (MODIS/JAXA)** 與 **珊瑚礁生態調查**。")
             
             with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
                 # 左側：地圖與控制項
                 with solara.Column(style={"flex": "1", "min-width": "350px"}):
                     solara.Markdown("### 🗺️ 衛星海溫分佈")
                     with solara.Row():
-                        solara.SliderInt(label="年份", value=sst_year, min=2018, max=2025)
+                        # ✅ 修改：將 min 改為 2016
+                        solara.SliderInt(label="年份", value=sst_year, min=2016, max=2025)
                         solara.ToggleButtonsSingle(value=sst_type, values=["全年平均", "夏季均溫"])
+                    
+                    # 顯示目前的資料來源提示
+                    source_hint = "NASA MODIS" if sst_year.value < 2018 else "JAXA GCOM-C"
+                    solara.Markdown(f"*當前資料來源: **{source_hint}*** (解析度差異為衛星特性)", style="font-size: 12px; color: gray; margin-top: -10px;")
+                    
                     SSTMap(sst_year.value, sst_type.value)
                 
                 # 右側：統計圖表
                 with solara.Column(style={"flex": "1", "min-width": "350px"}):
                     solara.Markdown("### 📈 環境 vs 生態")
-                    SSTCoralChart()
+                    SSTCoralChart() # 請確保上方有定義此函數
                     solara.Info("圖表說明：紅線為海溫(壓力源)，藍柱為珊瑚總面積(受體)。")
 
         # --- 2. 優養化區塊 ---
