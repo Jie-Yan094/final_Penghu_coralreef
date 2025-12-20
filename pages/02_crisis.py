@@ -389,7 +389,7 @@ def Page():
             # ==========================================
             with solara.Column(style={"width": "100%", "padding-top": "40px"}):
                 solara.Markdown("---")
-                solara.Markdown("## 3. 珊瑚礁生態系崩壞：棘冠海星的威脅")
+                solara.Markdown("## 3. 珊瑚礁生態系崩壞：棘冠海星產生的威脅")
                 
                 image_url = "https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg"
                 
