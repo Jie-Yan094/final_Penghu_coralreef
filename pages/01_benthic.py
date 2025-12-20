@@ -67,15 +67,20 @@ def ReefHabitatMap(year, period, radius):
         
         mask_train = smooth(img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), radius)
         
-        # --- 修正開始 ---
-        # 原本錯誤: .remap(..., 'benthic') -> 字串錯誤
-        # 修正後:   .remap(..., 0)         -> 數字正確 (未匹配的像素設為 0)
+        # 1. 修正後的 label_img (這部分您應該已經修好了)
         label_img = ee.Image('ACA/reef_habitat/v2_0').clip(roi).remap(
             [0, 11, 12, 13, 14, 15, 18], 
             [0, 1, 2, 3, 4, 5, 6], 
-            0  # <--- 這裡原本是 'benthic'，請改成 0
+            0 
         ).rename('benthic').toByte()
-        # --- 修正結束 ---
+        
+        # 2. 補回這段：定義並訓練 classifier
+        classifier = ee.Classifier.smileRandomForest(100).train(
+            img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(
+                numPoints=3000, classBand='benthic', region=roi, scale=10
+            ),
+            'benthic', img_train.bandNames()
+        )
 
         # E. 處理目標年份影像 (依據選擇的夏季或全年)
         target_img = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
