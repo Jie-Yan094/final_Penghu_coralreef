@@ -102,7 +102,7 @@ def Page():
     
     with solara.Column(align="center", style={"text-align": "center", "width": "100%"}):
         
-        solara.Markdown("# 澎湖珊瑚礁與相關生態網站")
+        solara.Markdown("# 澎湖珊瑚礁與相關生態網站(沒有我不喜歡這個無聊的名字但我暫時沒有想法 sad)")
 
         solara.Markdown("### 專案簡介")
         with solara.Column(style={"max-width": "800px"}):
