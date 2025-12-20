@@ -322,6 +322,7 @@ def Page():
         # --- 1. 海溫區塊 ---
         with solara.Card("1. 海溫異常 (SST)"):
             solara.Markdown("長期的高溫會導致珊瑚白化。下圖結合了 **衛星監測** 與 **珊瑚礁生態調查**。")
+            solara.Markdown("(地圖到時候想換成跟分類做Split Screen Map 比較，不過先放這個版本。)")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     solara.Markdown("### 🗺️ 衛星海溫分佈")
@@ -339,6 +340,7 @@ def Page():
         # --- 2. 優養化區塊 ---
         with solara.Card("2. 海洋優養化 (NDCI)"):
             solara.Markdown("監測夏季水體葉綠素濃度，紅色代表優養化風險高。")
+            solara.Markdown("(這裡也想分類做Split Screen Map 比較，先放這個版本。)")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     solara.SliderInt(label="年份", value=ndci_year, min=2016, max=2025)
@@ -348,7 +350,8 @@ def Page():
                     NDCIChart()
 
         # --- 3. 棘冠海星區塊 ---
-        with solara.Card("3. 生態殺手：棘冠海星 (Crown-of-thorns Starfish)"):
+        with solara.Card("3. 好餓好餓的珊瑚礁大胃王--棘冠海星 (Crown-of-thorns Starfish)"):
+            solara.Markdown("這裡想把分類跟這些區域疊再一起顯示，並計算各區域每年硬珊瑚面積")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap-reverse"}):
                 with solara.Column(style={"flex": "3", "min-width": "500px"}):
                     solara.Markdown("### 🚨 爆發警戒區域")
