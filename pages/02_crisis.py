@@ -282,31 +282,81 @@ def NDCIMap(year):
 
 @solara.component
 def NDCIChart():
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df_ndci['Year'], y=df_ndci['NDCI_Mean'], name='NDCI Mean',
-        mode='lines+markers', line=dict(color='#00CC96', width=3)
-    ))
-    fig.add_trace(go.Bar(
-        x=df_ndci['Year'], y=df_ndci['Image_Count'], name='Image Count',
-        marker_color='#636EFA', opacity=0.3, yaxis='y2'
-    ))
+    """
+    NDCI 與 珊瑚礁面積 雙軸圖表
+    (已優化：圖例下移、邊距調整、響應式)
+    """
+    # 確保資料長度一致 (使用全域變數 df_ndci 與 coral_area_values)
+    # 若 coral_area_values 尚未定義，請確保它已在全域範圍宣告 (如上一步驟)
+    
+    with solara.Card("📊 關聯分析：NDCI vs 珊瑚礁面積"):
+        fig = go.Figure()
 
-    fig.update_layout(
-        title='NDCI 夏季平均值 vs 影像數量',
-        xaxis=dict(title='年份', tickmode='linear'),
-        yaxis=dict(
-            title=dict(text='NDCI 指數', font=dict(color="#00CC96")), 
-            tickfont=dict(color="#00CC96")
-        ),
-        yaxis2=dict(
-            title=dict(text='影像數量 (張)', font=dict(color="#636EFA")), 
-            tickfont=dict(color="#636EFA"), 
-            overlaying='y', side='right'
-        ),
-        legend=dict(x=0.01, y=0.99), hovermode="x unified", margin=dict(t=40, b=40), height=350
-    )
-    solara.FigurePlotly(fig)
+        # 1. 珊瑚礁面積 (長條圖 - 放在底層)
+        # 代表生態受體
+        fig.add_trace(go.Bar(
+            x=df_ndci['Year'],
+            y=coral_area_values, # 使用我們整理好的面積數據
+            name='珊瑚礁總面積 (m²)',
+            marker_color='rgba(52, 152, 219, 0.6)', # 淺藍色半透明
+            yaxis='y2' # 對應右軸
+        ))
+
+        # 2. NDCI 指數 (折線圖 - 放在上層)
+        # 代表環境壓力 (值越高代表葉綠素越高/優養化風險越高)
+        fig.add_trace(go.Scatter(
+            x=df_ndci['Year'],
+            y=df_ndci['NDCI_Mean'],
+            name='NDCI (優養化指標)',
+            mode='lines+markers',
+            line=dict(color='#00CC96', width=3), # 綠色線條
+            marker=dict(size=8)
+        ))
+
+        fig.update_layout(
+            title='優養化指標 (NDCI) vs 珊瑚礁面積',
+            xaxis=dict(title='年份', tickmode='linear', dtick=1),
+            
+            # 左軸 (NDCI)
+            yaxis=dict(
+                title=dict(text='NDCI 指數', font=dict(color="#00CC96")),
+                tickfont=dict(color="#00CC96"),
+                side='left'
+            ),
+            
+            # 右軸 (面積)
+            yaxis2=dict(
+                title=dict(text='珊瑚礁面積 (m²)', font=dict(color="#3498db")),
+                tickfont=dict(color="#3498db"),
+                overlaying='y',
+                side='right',
+                showgrid=False, # 隱藏右軸網格線，避免畫面雜亂
+                range=[0, max(coral_area_values) * 1.3] # 自動調整高度
+            ),
+            
+            # 圖例設定 (移至下方)
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.25,
+                xanchor="center",
+                x=0.5
+            ),
+            
+            hovermode="x unified",
+            margin=dict(l=50, r=50, t=50, b=80), # b=80 留空間給圖例
+            height=400,
+            autosize=True
+        )
+        
+        solara.FigurePlotly(fig)
+        
+        # 簡單的趨勢解讀
+        solara.Markdown("""
+        * **綠線 (NDCI)**：數值越高，代表水體中藻類密度越高（優養化風險增加）。
+        * **藍柱 (面積)**：代表珊瑚礁健康覆蓋範圍。
+        * **觀察點**：2022年後 NDCI 顯著升高，需觀察同期的珊瑚面積是否呈現下降趨勢。
+        """, style="font-size: 0.9em; color: gray;")
 
 # ==========================================
 # 5. 組件：棘冠海星地圖
@@ -349,7 +399,7 @@ def Page():
                 
                 # 左側：地圖與控制項
                 # 修改：將 min-width 提高到 450px 或 500px，強迫窄螢幕換行
-                with solara.Column(style={"flex": "1", "min-width": "450px"}):
+                with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     solara.Markdown("### 🗺️ 衛星海溫分佈")
                     with solara.Row():
                         solara.SliderInt(label="年份", value=sst_year, min=2016, max=2025)
@@ -363,7 +413,7 @@ def Page():
                 
                 # 右側：統計圖表
                 # 修改：同樣提高 min-width
-                with solara.Column(style={"flex": "1", "min-width": "450px"}):
+                with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     solara.Markdown("### 📈 環境 vs 生態")
                     SSTCoralChart()
                     solara.Info("圖表說明：紅線為海溫(壓力源)，藍柱為珊瑚總面積(受體)。")
@@ -373,11 +423,11 @@ def Page():
             solara.Markdown("監測夏季水體葉綠素濃度，紅色代表優養化風險高。")
             
             with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
-                with solara.Column(style={"flex": "1", "min-width": "450px"}):
+                with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     solara.SliderInt(label="年份", value=ndci_year, min=2016, max=2025)
                     NDCIMap(ndci_year.value)
                 
-                with solara.Column(style={"flex": "1", "min-width": "450px"}):
+                with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     NDCIChart()
                     solara.Markdown("""
                     * **資料來源**: Sentinel-2 衛星
