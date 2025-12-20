@@ -46,9 +46,9 @@ df_ndci = pd.DataFrame(ndci_data)
 # ==========================================
 # 2. 地圖組件 A：海溫地圖 (SST)
 # ==========================================
-@solara.component
-def SSTMap(year, period_type):
-    """
+
+    "@solara.component
+def SSTMap(year, period_type):""
     顯示 JAXA GCOM-C 衛星的海溫 (支援切換 全年/夏季)
     """
     def get_sst_map_html():
