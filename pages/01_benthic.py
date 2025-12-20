@@ -31,8 +31,8 @@ init_status = initialize_ee()
 # 1. 響應式變數定義
 # ==========================================
 target_year = solara.reactive(2024)
-time_period = solara.reactive("夏季平均") # 新增：季節區隔
-smoothing_radius = solara.reactive(30)   # 解決孔洞問題
+time_period = solara.reactive("夏季平均") 
+smoothing_radius = solara.reactive(30)   
 
 # ==========================================
 # 2. 地圖組件
@@ -49,72 +49,73 @@ def ReefHabitatMap(year, period, radius):
         else:
             start_date, end_date = f'{year}-01-01', f'{year}-12-31'
 
-        # B. 深度資料與遮罩 (解決大面積空洞問題)
+        # B. 深度資料與遮罩
         depth_raw = ee.Image('projects/ee-s1243041/assets/bathymetry_0')
         actual_band = depth_raw.bandNames().get(0)
         depth_img = depth_raw.select([actual_band]).rename('depth').clip(roi)
-        # 修正：深度閾值設為 20 公尺 (2000cm)，避免過淺導致地圖破洞
         depth_mask = depth_img.lt(2000).And(depth_img.gt(0))
 
-        # C. 形態學平滑工具
+        # C. 形態學平滑工具 (Helper)
         def smooth(mask, r):
             return mask.focal_mode(radius=r, units='meters', kernelType='circle')
 
-        # D. 訓練模型
+        # ==========================================
+        # D. 訓練模型 (參數固定化，避免重複訓練)
+        # ==========================================
         img_train = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
                      .filterBounds(roi).filterDate('2018-01-01', '2018-12-31')
                      .median().clip(roi).select('B.*'))
         
-        # 優化：如果半徑為 0，就不執行消耗巨大的 focal_mode
-        if radius > 0:
-             mask_train_raw = img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
-             mask_train = smooth(mask_train_raw, radius)
-        else:
-             mask_train = img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
+        # 【優化 1】 訓練集的遮罩使用「固定半徑」(10m)，不要跟隨 radius 滑桿
+        # 這樣滑動滑桿時，GEE 就不會覺得模型變了而重新訓練，大幅減少運算
+        mask_train = smooth(img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), 10)
 
-        # 修正 remap 參數，並確保數值型別正確
+        # 修正 remap 參數，確保數值型別正確 (0 而非 'benthic')
         label_img = ee.Image('ACA/reef_habitat/v2_0').clip(roi).remap(
             [0, 11, 12, 13, 14, 15, 18], 
             [0, 1, 2, 3, 4, 5, 6], 
             0
         ).rename('benthic').toByte()
         
-        # ★★★ 關鍵修正：加入 tileScale 並減少 numPoints ★★★
-        # numPoints: 降至 1000 以節省記憶體
-        # tileScale: 設為 8 或 16，允許 GEE 切碎計算以避免 OOM (Out Of Memory)
+        # 【優化 2】 scale 改為 30，tileScale 改為 4
+        # numPoints 設為 1000 足夠展示趨勢且速度快
         sample = img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(
             numPoints=1000, 
             classBand='benthic', 
             region=roi, 
-            scale=10, 
-            tileScale=8,  # 重要！
+            scale=30,      # <--- 從 10 改成 30 (速度快 9 倍)
+            tileScale=4,   # <--- 設為 4 避免記憶體溢出
             geometries=False
         )
 
-        # 稍微減少樹的數量 (100 -> 50) 也可以顯著提升即時渲染速度
         classifier = ee.Classifier.smileRandomForest(50).train(
             sample, 'benthic', img_train.bandNames()
         )
 
-        # E. 處理目標年份影像
+        # ==========================================
+        # E. 處理目標年份影像 (這裡才使用滑桿的動態 radius)
+        # ==========================================
         target_img = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
                       .filterBounds(roi).filterDate(start_date, end_date)
                       .median().clip(roi).select('B.*'))
         
-        # 優化平滑邏輯
         target_ndwi_mask = target_img.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
         
+        # 應用動態平滑邏輯
         if radius > 0:
+            # 只在「預測結果」上做昂貴的動態運算
             mask_target = smooth(target_ndwi_mask, radius)
-            # 分類後再平滑
             water_target = target_img.updateMask(mask_target)
+            
+            # 分類後再平滑結果
             classified_raw = water_target.classify(classifier)
-            classified = classified_raw.focal_mode(radius=radius, units='meters')
+            classified = smooth(classified_raw, radius)
         else:
+            # 如果半徑為 0，跳過所有平滑運算，速度最快
             mask_target = target_ndwi_mask
             water_target = target_img.updateMask(mask_target)
             classified = water_target.classify(classifier)
-            
+
         # F. 可視化
         s2_vis = {'min': 100, 'max': 3500, 'bands': ['B4', 'B3', 'B2']}
         class_vis = {'min': 0, 'max': 6, 'palette': ['000000', 'ffffbe', 'e0d05e', 'b19c3a', '668438', 'ff6161', '9bcc4f']}
@@ -145,7 +146,7 @@ def Page():
                     # 年份滑桿
                     solara.SliderInt(label="選擇監測年份", value=target_year, min=2016, max=2025)
                     
-                    # 季節切換按鈕 (保留您的需求)
+                    # 季節切換按鈕
                     solara.Markdown("#### 2. 統計區間")
                     solara.ToggleButtonsSingle(value=time_period, values=["夏季平均", "全年平均"])
                     
