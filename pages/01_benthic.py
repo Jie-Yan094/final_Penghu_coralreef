@@ -67,7 +67,6 @@ def ReefHabitatMap(year, period, radius):
                      .median().clip(roi).select('B.*'))
         
         # 【優化 1】 訓練集的遮罩使用「固定半徑」(10m)，不要跟隨 radius 滑桿
-        # 這樣滑動滑桿時，GEE 就不會覺得模型變了而重新訓練，大幅減少運算
         mask_train = smooth(img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), 10)
 
         # 修正 remap 參數，確保數值型別正確 (0 而非 'benthic')
@@ -78,13 +77,12 @@ def ReefHabitatMap(year, period, radius):
         ).rename('benthic').toByte()
         
         # 【優化 2】 scale 改為 30，tileScale 改為 4
-        # numPoints 設為 1000 足夠展示趨勢且速度快
         sample = img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(
             numPoints=1000, 
             classBand='benthic', 
             region=roi, 
-            scale=30,      # <--- 從 10 改成 30 (速度快 9 倍)
-            tileScale=4,   # <--- 設為 4 避免記憶體溢出
+            scale=30,      
+            tileScale=4,   
             geometries=False
         )
 
@@ -103,15 +101,12 @@ def ReefHabitatMap(year, period, radius):
         
         # 應用動態平滑邏輯
         if radius > 0:
-            # 只在「預測結果」上做昂貴的動態運算
             mask_target = smooth(target_ndwi_mask, radius)
             water_target = target_img.updateMask(mask_target)
             
-            # 分類後再平滑結果
             classified_raw = water_target.classify(classifier)
             classified = smooth(classified_raw, radius)
         else:
-            # 如果半徑為 0，跳過所有平滑運算，速度最快
             mask_target = target_ndwi_mask
             water_target = target_img.updateMask(mask_target)
             classified = water_target.classify(classifier)
@@ -122,7 +117,9 @@ def ReefHabitatMap(year, period, radius):
         
         m.addLayer(water_target, s2_vis, f"{year} {period} 底圖")
         m.addLayer(classified, class_vis, f"{year} 棲地分類結果")
-        m.add_legend(title="棲地類別", keys=["無數據", "沙地", "沙/藻", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=class_vis['palette'])
+        
+        # ★★★ 修正處：將 keys 改為 labels ★★★
+        m.add_legend(title="棲地類別", labels=["無數據", "沙地", "沙/藻", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=class_vis['palette'])
         
         return m.to_html()
 
@@ -143,10 +140,8 @@ def Page():
             with solara.Column(style={"width": "380px"}):
                 with solara.Card("🔍 監測工具箱"):
                     solara.Markdown("#### 1. 時間範圍選擇")
-                    # 年份滑桿
                     solara.SliderInt(label="選擇監測年份", value=target_year, min=2016, max=2025)
                     
-                    # 季節切換按鈕
                     solara.Markdown("#### 2. 統計區間")
                     solara.ToggleButtonsSingle(value=time_period, values=["夏季平均", "全年平均"])
                     
