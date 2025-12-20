@@ -236,7 +236,7 @@ def SSTCoralChart():
         * **數據說明**：珊瑚礁面積包含「硬珊瑚」與「軟珊瑚」之總和。
         * **觀察重點**：
             1. **{int(max_temp_year)} 年** 觀測到最高夏季均溫 (**{max_temp:.2f}°C**)。
-            2. 2017 與 2020 年珊瑚面積有顯著下降，可對照當時的海溫或颱風事件進行分析。
+            2. 
         """, style="font-size: 0.9em; color: gray;")
 
 # ==========================================
@@ -382,7 +382,7 @@ def Page():
                     """, style="font-size: 0.9em; color: gray;")
 
         # --- 3. 棘冠海星區塊 ---
-        with solara.Card("3. 生態殺手：棘冠海星 (Crown-of-thorns Starfish)"):
+        with solara.Card("3. 好餓好餓的珊瑚礁大胃王:棘冠海星 (Crown-of-thorns Starfish)"):
             with solara.Row(gap="30px", style={"flex-wrap": "wrap-reverse"}):
                 # 左側：文字與地圖
                 with solara.Column(style={"flex": "3", "min-width": "300px"}):
@@ -408,7 +408,7 @@ def Page():
 
         # --- 4. 人類活動 ---
         with solara.Card("4. 人類活動影響"):
-            solara.Markdown("*(此區域正進行資料彙整中，預計加入漁業活動熱點分析)*")
+            solara.Markdown("*(此區域正進行資料彙整中，預計加入海洋垃圾、漁網)*")
 
         solara.Markdown("---")
         solara.Markdown("資料來源：JAXA GCOM-C, ESA Sentinel-2, 海洋保育署 | Update: 2025.12")
