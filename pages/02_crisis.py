@@ -383,6 +383,7 @@ def Page():
 
         # --- 3. 棘冠海星區塊 ---
         with solara.Card("3. 好餓好餓的珊瑚礁大胃王:棘冠海星 (Crown-of-thorns Starfish)"):
+            solara.Markdown("想要把這些區域跟分類結果疊在一起，計算這些區域的硬珊瑚年變化面積")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap-reverse"}):
                 # 左側：文字與地圖
                 with solara.Column(style={"flex": "3", "min-width": "300px"}):
