@@ -3,11 +3,10 @@ import geemap.foliumap as geemap
 import ee
 import os
 import json
-import tempfile
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. 強健的 GEE 初始化
+# 0. GEE 驗證與初始化
 # ==========================================
 def initialize_ee():
     try:
@@ -24,123 +23,119 @@ def initialize_ee():
             ee.Initialize(project='ee-s1243037-0')
             return "⚠️ 本機環境認證"
     except Exception as e:
-        print(f"CRITICAL STARTUP ERROR: {e}")
-        return f"❌ 系統崩潰: {e}"
+        return f"❌ 初始化失敗: {e}"
 
 init_status = initialize_ee()
 
 # ==========================================
 # 1. 響應式變數定義
 # ==========================================
-target_year = solara.reactive(2016)
-smoothing_radius = solara.reactive(20) 
+target_year = solara.reactive(2024)
+time_period = solara.reactive("夏季平均") # 新增：季節區隔
+smoothing_radius = solara.reactive(30)   # 解決孔洞問題
 
 # ==========================================
-# 2. 地圖組件：珊瑚礁棲地分類 (Benthic Habitat)
+# 2. 地圖組件
 # ==========================================
 @solara.component
-def ReefClassificationMap(year, radius):
-    def get_reef_map_html():
+def ReefHabitatMap(year, period, radius):
+    def get_map_html():
         m = geemap.Map(center=[23.5, 119.5], zoom=11)
         roi = ee.Geometry.Rectangle([119.2741, 23.1694, 119.8114, 23.8792])
         
-        # B. 深度資料與遮罩
-        depth_asset = ee.Image('projects/ee-s1243041/assets/bathymetry_0')
-        actual_band = depth_asset.bandNames().get(0)
-        depth_img = depth_asset.select([actual_band]).rename('depth').clip(roi)
+        # A. 設定日期區間
+        if period == "夏季平均":
+            start_date, end_date = f'{year}-06-01', f'{year}-09-30'
+        else:
+            start_date, end_date = f'{year}-01-01', f'{year}-12-31'
 
-        # ⭐ 修正：將 200 改為 2000 (20公尺)，解決大面積空洞問題
+        # B. 深度資料與遮罩 (解決大面積空洞問題)
+        depth_raw = ee.Image('projects/ee-s1243041/assets/bathymetry_0')
+        actual_band = depth_raw.bandNames().get(0)
+        depth_img = depth_raw.select([actual_band]).rename('depth').clip(roi)
+        # 修正：深度閾值設為 20 公尺 (2000cm)，避免過淺導致地圖破洞
         depth_mask = depth_img.lt(2000).And(depth_img.gt(0))
 
-        # C. 平滑化邏輯
-        def smooth_logic(img_mask, r):
-            return img_mask.focal_mode(radius=r, units='meters', kernelType='circle')
+        # C. 形態學平滑工具
+        def smooth(mask, r):
+            return mask.focal_mode(radius=r, units='meters', kernelType='circle')
 
-        # D. 訓練模型 (以 2018 年為準)
-        img_2018 = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
-                    .filterBounds(roi)
-                    .filterDate('2018-01-01', '2018-12-31')
+        # D. 訓練模型 (固定以 2018 全年數據作為穩定基準)
+        img_train = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
+                    .filterBounds(roi).filterDate('2018-01-01', '2018-12-31')
                     .median().clip(roi).select('B.*'))
+        mask_train = smooth(img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), radius)
         
-        mask_2018 = smooth_logic(img_2018.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), radius)
-        water_2018 = img_2018.updateMask(mask_2018)
+        label_img = ee.Image('ACA/reef_habitat/v2_0').clip(roi).remap(
+            [0, 11, 12, 13, 14, 15, 18], [0, 1, 2, 3, 4, 5, 6], 'benthic'
+        ).rename('benthic').toByte()
         
-        my_benthic = ee.Image('ACA/reef_habitat/v2_0').clip(roi)
-        classValues = [0, 11, 12, 13, 14, 15, 18]
-        remapValues = ee.List.sequence(0, 6)
-        label_img = my_benthic.remap(classValues, remapValues, bandName='benthic').rename('benthic').toByte()
-        
-        # 訓練樣本 (適度減少樣本點以加快渲染速度)
-        training_samples = water_2018.addBands(label_img).stratifiedSample(
-            numPoints=3000, classBand='benthic', region=roi, scale=10, geometries=True
+        classifier = ee.Classifier.smileRandomForest(100).train(
+            img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(numPoints=3000, classBand='benthic', region=roi, scale=10),
+            'benthic', img_train.bandNames()
         )
-        classifier = ee.Classifier.smileRandomForest(100).train(training_samples, 'benthic', water_2018.bandNames())
 
-        # E. 目標年份處理
+        # E. 處理目標年份影像 (依據選擇的夏季或全年)
         target_img = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
-                      .filterBounds(roi)
-                      .filterDate(f'{year}-01-01', f'{year}-12-31')
+                      .filterBounds(roi).filterDate(start_date, end_date)
                       .median().clip(roi).select('B.*'))
         
-        mask_target = smooth_logic(target_img.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), radius)
+        # 生成遮罩並平滑化以填補孔洞
+        mask_target = smooth(target_img.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), radius)
         water_target = target_img.updateMask(mask_target)
         
-        # 分類並套用眾數濾波 (再度平滑化結果)
+        # 執行分類並再次平滑化結果
         classified = water_target.classify(classifier).focal_mode(radius=radius, units='meters')
 
         # F. 可視化
         s2_vis = {'min': 100, 'max': 3500, 'bands': ['B4', 'B3', 'B2']}
         class_vis = {'min': 0, 'max': 6, 'palette': ['000000', 'ffffbe', 'e0d05e', 'b19c3a', '668438', 'ff6161', '9bcc4f']}
         
-        m.addLayer(water_target, s2_vis, f"{year} Sentinel-2")
+        m.addLayer(water_target, s2_vis, f"{year} {period} 底圖")
         m.addLayer(classified, class_vis, f"{year} 棲地分類結果")
         m.add_legend(title="棲地類別", keys=["無數據", "沙地", "沙/藻", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=class_vis['palette'])
         
         return m.to_html()
 
-    map_html = solara.use_memo(get_reef_map_html, dependencies=[year, radius])
+    map_html = solara.use_memo(get_map_html, dependencies=[year, period, radius])
+    return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "750px", "style": "border: none;"})
 
-    return solara.HTML(
-        tag="iframe",
-        attributes={
-            "srcDoc": map_html,
-            "width": "100%",
-            "height": "750px",
-            "style": "border: none; border-radius: 8px;"
-        }
-    )
-
+# ==========================================
+# 3. 介面佈局
+# ==========================================
 @solara.component
 def Page():
-    with solara.Column(style={"width": "100%", "padding": "20px"}, align="center"):
-        with solara.Column(style={"max-width": "1000px", "width": "100%"}):
-            solara.Markdown("# 澎湖底棲生物動態監測系統")
-            solara.Markdown(f"**系統狀態**: {init_status}")
-            
-            solara.Markdown("""
-            本系統結合 **Sentinel-2 衛星影像** 與 **隨機森林機器學習**。
-            透過形態學濾波 (Morphological Filtering) 技術填補孔洞，使地圖分布更連續。
-            """)
+    with solara.Column(style={"padding": "30px", "background-color": "#f4f7f9"}):
+        solara.Title("澎湖珊瑚礁棲地動態監測系統")
+        solara.Markdown(f"**系統狀態**: {init_status}")
 
-            with solara.Row(style={"gap": "20px"}):
-                with solara.Column(style={"width": "350px"}):
-                    with solara.Card("控制面板"):
-                        solara.Markdown("#### 1. 時間維度")
-                        solara.Select(label="選擇監測年份", value=target_year, 
-                                      values=[2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025])
-                        
-                        solara.Markdown("---")
-                        solara.Markdown("#### 2. 影像優化 (填補孔洞)")
-                        solara.SliderInt(label="平滑半徑 (m)", value=smoothing_radius, min=0, max=80)
-                        solara.Info(f"目前的半徑為 {smoothing_radius.value} 公尺。")
+        with solara.Row(style={"gap": "20px"}):
+            # 左側控制面板
+            with solara.Column(style={"width": "380px"}):
+                with solara.Card("🔍 監測工具箱"):
+                    solara.Markdown("#### 1. 時間範圍選擇")
+                    # 年份滑桿
+                    solara.SliderInt(label="選擇監測年份", value=target_year, min=2016, max=2025)
+                    
+                    # 季節切換按鈕 (保留您的需求)
+                    solara.Markdown("#### 2. 統計區間")
+                    solara.ToggleButtonsSingle(value=time_period, values=["夏季平均", "全年平均"])
+                    
+                    solara.Markdown("---")
+                    solara.Markdown("#### 3. 影像優化 (填補孔洞)")
+                    solara.SliderInt(label="平滑半徑 (m)", value=smoothing_radius, min=0, max=80)
+                    solara.Info(f"目前的設定會根據 {time_period.value} 影像填補約 {smoothing_radius.value} 公尺內的孔洞。")
 
-                with solara.Column(style={"flex": "1"}):
-                    with solara.Card(f"📍 {target_year.value} 年 棲地分布圖"):
-                        ReefClassificationMap(target_year.value, smoothing_radius.value)
+                with solara.Card("💡 說明"):
+                    solara.Markdown(f"""
+                    - **夏季平均**：聚焦 6-9 月影像，可觀察極端氣候對珊瑚礁的即時光譜影響。
+                    - **全年平均**：利用整年數據中值，消除單一季節的雲霧干擾，獲得最穩定的底質分類。
+                    """)
 
-            solara.Markdown("---")
-            solara.Markdown("### 演算法說明：隨機森林監督式分類")
-            solara.Markdown("利用 2018 年 ACA (Allen Coral Atlas) 數據作為地面真實標籤進行模型訓練，並應用於各年份之光譜影像。")
+            # 右側地圖顯示
+            with solara.Column(style={"flex": "1"}):
+                with solara.Card(f"📍 {target_year.value} 年 {time_period.value} - 棲地分布地圖"):
+                    ReefHabitatMap(target_year.value, time_period.value, smoothing_radius.value)
 
 # 啟動 Page
 Page()
