@@ -37,43 +37,32 @@ ROI_CENTER = [23.5, 119.5]
 sst_year = solara.reactive(2024)
 sst_type = solara.reactive("夏季均溫")
 ndci_year = solara.reactive(2025)
+coral_display_type = solara.reactive("硬珊瑚") # 預設顯示硬珊瑚
 
-# --- 資料準備 A: 整合數據 ---
-years_list = [ 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+# --- 資料準備 ---
+years_list = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
 
 # 1. 夏季海溫 (SST)
-sst_values = [
-    28.16, 27.75, 28.62, 28.37, 28.29, # 2018-2022
-    28.02, 28.95, 28.43  # 2023-2025
-]
+sst_values = [28.16, 27.75, 28.62, 28.37, 28.29, 28.02, 28.95, 28.43]
 
-# 2. 珊瑚礁面積數據 (兩組)
-# A. 總珊瑚 (硬+軟)
-total_coral_values = [
-    28606.5, 40291.9, 13151.8, 
-    22949.0, 15740.7, 25286.3, 42849.9, 27761.9
-]
-# B. 硬珊瑚 (Hard Coral Only)
-hard_coral_values = [
-    1584.55, 382.45, 76.97, 
-    197.21, 95.55, 224.21, 239.71, 1264.49
-]
+# 2. 珊瑚礁面積數據
+total_coral_values = [28606.5, 40291.9, 13151.8, 22949.0, 15740.7, 25286.3, 42849.9, 27761.9]
+hard_coral_values = [1584.55, 382.45, 76.97, 197.21, 95.55, 224.21, 239.71, 1264.49]
+# 計算軟珊瑚面積
+soft_coral_values = [t - h for t, h in zip(total_coral_values, hard_coral_values)]
 
-
-# 建立主要 DataFrame (主圖表預設使用 硬珊瑚)
+# 建立 DataFrame
 df_mixed = pd.DataFrame({
     'Year': years_list,
     'SST_Summer': sst_values,
-    'Coral_Area': hard_coral_values,    # 用於 SST 圖表 (綠色柱狀)
-    'Coral_Total': total_coral_values   # 保留備用
+    'Hard_Coral': hard_coral_values,
+    'Soft_Coral': soft_coral_values,
+    'Total_Coral': total_coral_values
 })
-
-# --- 資料準備 B: NDCI 資料 ---
+# NDCI 數據
 ndci_data = {
-    'Year': [ 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
-    'NDCI_Mean': [ -0.063422, 0.041270, 0.041549, 
-                  0.041954, 0.093461, 0.107500, 0.108534, 0.066040],
-    'Image_Count': [ 52, 24, 30, 25, 23, 25, 19, 31]
+    'Year': years_list,
+    'NDCI_Mean': [-0.063422, 0.041270, 0.041549, 0.041954, 0.093461, 0.107500, 0.108534, 0.066040]
 }
 df_ndci = pd.DataFrame(ndci_data)
 
@@ -146,27 +135,36 @@ def SSTMap(year, period_type):
 
 @solara.component
 def SSTCoralChart():
-    with solara.Card("📊 關聯分析：海溫 vs 硬珊瑚面積"):
+    # 根據切換選擇資料
+    is_hard = coral_display_type.value == "硬珊瑚"
+    current_data = hard_coral_values if is_hard else soft_coral_values
+    label = "硬珊瑚" if is_hard else "軟珊瑚"
+    color = 'rgba(46, 204, 113, 0.7)' if is_hard else 'rgba(155, 89, 182, 0.7)'
+
+    with solara.Card(f"📊 關聯分析：海溫 vs {label}面積"):
+        # 在卡片內加入切換按鈕
+        solara.ToggleButtonsSingle(value=coral_display_type, values=["硬珊瑚", "軟珊瑚"])
+        
         fig = go.Figure()
-        # 硬珊瑚
+        # 珊瑚面積柱狀圖
         fig.add_trace(go.Bar(
-            x=df_mixed['Year'], y=df_mixed['Coral_Area'], name='硬珊瑚面積 (m²)',
-            marker_color='rgba(46, 204, 113, 0.6)', yaxis='y2'
+            x=df_mixed['Year'], y=current_data, name=f'{label}面積 (m²)',
+            marker_color=color, yaxis='y2'
         ))
-        # 海溫
+        # 海溫折線
         fig.add_trace(go.Scatter(
             x=df_mixed['Year'], y=df_mixed['SST_Summer'], name='夏季均溫 (°C)',
             mode='lines+markers', line=dict(color='#e74c3c', width=4),
-            marker=dict(size=10, color='#c0392b', symbol='circle')
+            marker=dict(size=10, color='#c0392b')
         ))
 
         fig.update_layout(
-            title='環境壓力 vs 硬珊瑚面積趨勢',
-            xaxis=dict(title='年份', tickmode='linear', dtick=1),
+            title=f'環境壓力 vs {label}面積趨勢',
+            xaxis=dict(title='年份', tickmode='linear'),
             yaxis=dict(title=dict(text='海面溫度 (°C)', font=dict(color="#e74c3c")), tickfont=dict(color="#e74c3c"), range=[27, 29.5], side='left'),
-            yaxis2=dict(title=dict(text='硬珊瑚面積 (m²)', font=dict(color="#2ecc71")), tickfont=dict(color="#2ecc71"), overlaying='y', side='right', showgrid=False, range=[0, 2000]),
-            legend=dict(x=0.5, y=-0.15, xanchor='center', orientation="h"),
-            hovermode="x unified", margin=dict(l=50, r=50, t=60, b=80), height=500, autosize=True
+            yaxis2=dict(title=dict(text=f'{label}面積 (m²)', font=dict(color=color)), tickfont=dict(color=color), overlaying='y', side='right', showgrid=False),
+            legend=dict(x=0.5, y=-0.2, xanchor='center', orientation="h"),
+            hovermode="x unified", height=450
         )
         solara.FigurePlotly(fig)
 
@@ -211,29 +209,33 @@ def NDCIMap(year):
 
 @solara.component
 def NDCIChart():
-    with solara.Card("📊 關聯分析：NDCI vs 硬珊瑚面積"):
+    is_hard = coral_display_type.value == "硬珊瑚"
+    current_data = hard_coral_values if is_hard else soft_coral_values
+    label = "硬珊瑚" if is_hard else "軟珊瑚"
+    color = 'rgba(46, 204, 113, 0.7)' if is_hard else 'rgba(155, 89, 182, 0.7)'
+
+    with solara.Card(f"📊 關聯分析：NDCI vs {label}面積"):
+        solara.ToggleButtonsSingle(value=coral_display_type, values=["硬珊瑚", "軟珊瑚"])
+        
         fig = go.Figure()
-        # 硬珊瑚
         fig.add_trace(go.Bar(
-            x=df_ndci['Year'], y=hard_coral_values, name='硬珊瑚面積 (m²)',
-            marker_color='rgba(46, 204, 113, 0.6)', yaxis='y2'
+            x=df_ndci['Year'], y=current_data, name=f'{label}面積 (m²)',
+            marker_color=color, yaxis='y2'
         ))
-        # NDCI
         fig.add_trace(go.Scatter(
             x=df_ndci['Year'], y=df_ndci['NDCI_Mean'], name='NDCI (優養化指標)',
-            mode='lines+markers', line=dict(color='#00CC96', width=3), marker=dict(size=8)
+            mode='lines+markers', line=dict(color='#00CC96', width=3)
         ))
 
         fig.update_layout(
-            title='優養化指標 (NDCI) vs 硬珊瑚面積',
-            xaxis=dict(title='年份', tickmode='linear', dtick=1),
+            title=f'優養化指標 (NDCI) vs {label}面積',
+            xaxis=dict(title='年份', tickmode='linear'),
             yaxis=dict(title=dict(text='NDCI 指數', font=dict(color="#00CC96")), tickfont=dict(color="#00CC96"), side='left'),
-            yaxis2=dict(title=dict(text='硬珊瑚面積 (m²)', font=dict(color="#2ecc71")), tickfont=dict(color="#2ecc71"), overlaying='y', side='right', showgrid=False, range=[0, 2000]),
-            legend=dict(x=0.5, y=-0.15, xanchor='center', orientation="h"),
-            hovermode="x unified", margin=dict(l=50, r=50, t=50, b=80), height=500, autosize=True
+            yaxis2=dict(title=dict(text=f'{label}面積 (m²)', font=dict(color=color)), tickfont=dict(color=color), overlaying='y', side='right', showgrid=False),
+            legend=dict(x=0.5, y=-0.2, xanchor='center', orientation="h"),
+            height=450
         )
         solara.FigurePlotly(fig)
-
 # ==========================================
 # 5. 組件：棘冠海星地圖
 # ==========================================
@@ -335,7 +337,7 @@ def Page():
                     SSTMap(sst_year.value, sst_type.value)
                 
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
-                    solara.Markdown("### 📈 環境 vs 生態 (硬珊瑚)")
+                    solara.Markdown("### 📈 環境 vs 生態 (硬/軟珊瑚)")
                     SSTCoralChart()
 
         # --- 2. 優養化區塊 ---
