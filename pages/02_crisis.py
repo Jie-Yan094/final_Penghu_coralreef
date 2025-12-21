@@ -370,7 +370,7 @@ def Page():
 
         # --- 5. 人類活動 ---
         with solara.Card("5. 人類活動影響"):
-            solara.Markdown("*(預計加入：海廢熱點與廢棄漁網分佈圖)*")
+            solara.Markdown("*(預計加入：海廢熱點與廢棄漁網分佈圖(如果有找到但還沒有))*")
 
         solara.Markdown("---")
         solara.Markdown("資料來源：NASA MODIS, JAXA GCOM-C, ESA Sentinel-2, 海洋保育署 | Update: 2025.12")
