@@ -38,18 +38,47 @@ sst_year = solara.reactive(2024)
 sst_type = solara.reactive("夏季均溫")
 ndci_year = solara.reactive(2025)
 
-years_list = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
-sst_values = [28.16, 27.75, 28.62, 28.37, 28.29, 28.02, 28.95, 28.43]
-hard_coral_values = [1584.55, 382.45, 76.97, 197.21, 95.55, 224.21, 239.71, 1264.49]
-soft_coral_values = [27021.95, 39909.45, 13074.83, 22751.8, 15645.15, 25062.1, 42609.19, 26497.41]
-ndci_mean_values = [-0.063422, 0.041270, 0.041549, 0.041954, 0.093461, 0.107500, 0.108534, 0.066040]
+# --- 資料準備 A: 整合數據 ---
+years_list = [ 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
 
-df_main = pd.DataFrame({
+# 1. 夏季海溫 (SST)
+sst_values = [
+    28.16, 27.75, 28.62, 28.37, 28.29, # 2018-2022
+    28.02, 28.95, 28.43  # 2023-2025
+]
+
+# 2. 珊瑚礁面積數據 (兩組)
+# A. 總珊瑚 (硬+軟)
+total_coral_values = [
+    28606.5, 40291.9, 13151.8, 
+    22949.0, 15740.7, 25286.3, 42849.9, 27761.9
+]
+# B. 硬珊瑚 (Hard Coral Only)
+hard_coral_values = [
+    1584.55, 382.45, 76.97, 
+    197.21, 95.55, 224.21, 239.71, 1264.49
+]
+
+# C. 軟珊瑚 (Soft Coral Only)
+soft_coral_values = [
+    27021.95, 39909.45, 13074.83, 
+    22751.8, 15645.15, 25062.1, 42609.19, 26497.41
+]
+
+# 建立主要 DataFrame (主圖表預設使用 硬珊瑚)
+df_mixed = pd.DataFrame({
     'Year': years_list,
     'SST_Summer': sst_values,
-    'Hard_Coral': hard_coral_values,
-    'Soft_Coral': soft_coral_values,
-    'NDCI': ndci_mean_values
+    'Coral_Area': hard_coral_values,    # 用於 SST 圖表 (綠色柱狀)
+    'Coral_Total': total_coral_values   # 保留備用
+})
+
+#DataFrame(副圖表使用 軟珊瑚)
+df_soft = pd.DataFrame({
+    'Year': years_list,
+    'SST_Summer': sst_values,
+    'Coral_Area': soft_coral_values,    # 用於 SST 圖表 (綠色柱狀)
+    'Coral_Total': total_coral_values   # 保留備用
 })
 
 # --- 資料準備 B: NDCI 資料 ---
