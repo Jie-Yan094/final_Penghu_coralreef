@@ -370,16 +370,6 @@ def Page():
 
         # --- 5. 人類活動 ---
         with solara.Card("5. 人類活動影響"):
-            solara.Markdown("*(預計加入：海廢熱點與廢棄漁網分佈圖(如果有找到但還沒有))*")
-            import solara
-
-@solara.component
-def Page():
-    with solara.Column(style={"width": "100%", "padding": "20px", "max-width": "100%", "margin": "0 auto"}):
-        
-        solara.Markdown("# 🌊 危害澎湖珊瑚礁之各項因子監測平台")
-        
-        with solara.Card("5. 人類活動影響"):
             solara.Markdown("### 海廢熱點與廢棄漁網分佈圖")
             
             # 使用 solara.HTML 嵌入 iOcean 地圖小工具
