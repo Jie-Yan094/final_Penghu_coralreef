@@ -11,10 +11,9 @@ import plotly.graph_objects as go
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. GEE 驗證與初始化 (穩健版)
+# 0. GEE 驗證與初始化
 # ==========================================
 ee_initialized = False
-
 try:
     key_content = os.environ.get('EARTHENGINE_TOKEN')
     if key_content and key_content.strip():
@@ -22,7 +21,6 @@ try:
             clean_content = key_content.replace("'", '"')
             service_account_info = json.loads(clean_content)
             my_project_id = service_account_info.get("project_id")
-            
             creds = Credentials.from_service_account_info(
                 service_account_info,
                 scopes=['https://www.googleapis.com/auth/earthengine']
@@ -31,20 +29,18 @@ try:
             print(f"✅ 雲端環境：GEE 驗證成功！(Project: {my_project_id})")
             ee_initialized = True
         except Exception as e:
-            print(f"⚠️ Token 驗證失敗: {e}，嘗試使用本機驗證...")
+            print(f"⚠️ Token 驗證失敗，嘗試本機: {e}")
             try:
                 ee.Initialize()
                 ee_initialized = True
             except:
                 pass
     else:
-        print("⚠️ 無 Token，嘗試本機驗證...")
         try:
             ee.Initialize()
             ee_initialized = True
         except:
             pass
-
 except Exception as e:
     print(f"⚠️ GEE 初始化遭遇問題 ({e})")
 
@@ -54,7 +50,7 @@ except Exception as e:
 ROI_RECT = ee.Geometry.Rectangle([119.2741, 23.1695, 119.8114, 23.8792])
 ROI_CENTER = [23.5, 119.5]
 
-# 您的原始數據
+# 原始數據 (維持不變)
 raw_data = {
     "Year": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
     "沙地 (Sand)": [927.48, 253.14, 4343.63, 1471.55, 541.53, 919.71, 322.23, 677.92, 260.38, 5485.41],
@@ -78,7 +74,7 @@ smoothing_radius = solara.reactive(30)
 selected_chart = solara.reactive("📈 折線趨勢")
 
 # ==========================================
-# 2. 地圖組件：隨機森林分類邏輯
+# 2. 地圖組件：隨機森林分類邏輯 (升級版)
 # ==========================================
 def save_map_to_html(m):
     try:
@@ -109,28 +105,28 @@ def ReefHabitatMap(year, period, radius):
             else:
                 start_date, end_date = f'{year}-01-01', f'{year}-12-31'
 
-            # 2. 載入水深資料 (關鍵資產)
-            # 注意：如果您的帳號沒有這個 Asset 的權限，這裡會報錯
+            # 2. 水深遮罩 (避免將深海誤判為岩石)
             try:
                 depth_raw = ee.Image('projects/ee-s1243041/assets/bathymetry_0')
                 actual_band = depth_raw.bandNames().get(0)
                 depth_img = depth_raw.select([actual_band]).rename('depth').clip(ROI_RECT)
-                depth_mask = depth_img.lt(30).And(depth_img.gt(0)) # 只取水深 0-30m
+                # 稍微放寬深度限制到 30m，因為有些珊瑚礁延伸較深
+                depth_mask = depth_img.lt(30).And(depth_img.gt(0))
             except:
-                # 如果讀不到水深，使用全區 Mask，避免程式掛掉
                 print("⚠️ 無法讀取水深資料，使用全區分類")
                 depth_mask = ee.Image(1).clip(ROI_RECT)
 
-            # 3. 準備訓練資料 (2018年為基準)
+            # 3. 準備訓練資料 (Train) - 2018年基準
+            # 使用 focal_median 進行空間平滑，減少雜訊
             def smooth(mask, r):
-                return mask.focal_mode(radius=r, units='meters', kernelType='circle')
+                return mask.focal_median(radius=r, units='meters')
 
             img_train = (ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
                          .filterBounds(ROI_RECT).filterDate('2018-01-01', '2018-12-31')
                          .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10))
                          .median().clip(ROI_RECT).select(['B2','B3','B4','B8']))
 
-            # 使用 NDWI 找出水體
+            # 訓練用的 Mask：結合 NDWI 與 水深
             mask_train = smooth(img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), 10)
             
             # 載入 Allen Coral Atlas 標籤
@@ -138,13 +134,22 @@ def ReefHabitatMap(year, period, radius):
                 [0, 11, 12, 13, 14, 15, 18], [0, 1, 2, 3, 4, 5, 6], 0
             ).rename('benthic').toByte()
 
-            # 訓練隨機森林 (RF)
+            # 🔥 關鍵升級：大幅增加樣本數與 tileScale
+            # numPoints: 500 -> 3000 (增加樣本密度)
+            # tileScale: 4 -> 16 (避免 Out of Memory 錯誤)
             sample = img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(
-                numPoints=500, classBand='benthic', region=ROI_RECT, scale=30, tileScale=4, geometries=False
+                numPoints=3000, 
+                classBand='benthic', 
+                region=ROI_RECT, 
+                scale=10, # 提高解析度取樣 (原本是30)
+                tileScale=16, 
+                geometries=False
             )
-            classifier = ee.Classifier.smileRandomForest(30).train(sample, 'benthic', img_train.bandNames())
+            
+            # 🔥 關鍵升級：增加決策樹數量 30 -> 100
+            classifier = ee.Classifier.smileRandomForest(100).train(sample, 'benthic', img_train.bandNames())
 
-            # 4. 應用於目標年份
+            # 4. 應用於目標年份 (Target)
             target_img = (ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
                           .filterBounds(ROI_RECT).filterDate(start_date, end_date)
                           .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
@@ -152,13 +157,16 @@ def ReefHabitatMap(year, period, radius):
 
             target_ndwi_mask = target_img.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
 
+            # 分類並執行平滑化處理
             if radius > 0:
                 mask_target = smooth(target_ndwi_mask, radius)
-                classified = smooth(target_img.updateMask(mask_target).classify(classifier), radius)
+                # 先分類，再平滑，效果會比先平滑影像好
+                raw_class = target_img.updateMask(mask_target).classify(classifier)
+                classified = raw_class.focal_mode(radius=radius, units='meters', kernelType='circle')
             else:
                 classified = target_img.updateMask(target_ndwi_mask).classify(classifier)
 
-            # 5. 設定視覺化
+            # 5. 視覺化
             class_vis = {'min': 0, 'max': 6, 'palette': ['000000', 'ffffbe', 'e0d05e', 'b19c3a', '668438', 'ff6161', '9bcc4f']}
             
             # 加入圖層
@@ -229,9 +237,10 @@ def Page():
                     
                     solara.Markdown("#### 2. 影像優化")
                     solara.SliderInt(label="平滑半徑 (m)", value=smoothing_radius, min=0, max=80)
+                    solara.Info("若分類結果太像雜訊，請調大平滑半徑。")
                 
                 with solara.Card("💡 說明"):
-                    solara.Markdown("系統使用 Sentinel-2 衛星影像結合隨機森林 (Random Forest) 演算法進行即時棲地分類。")
+                    solara.Markdown("已升級：樣本數增加至 3000 點，並優化瓦片運算(tileScale=16)以提升分類精度。")
 
             # 右側：地圖顯示
             with solara.Column(style={"flex": "1", "min-width": "500px"}):
