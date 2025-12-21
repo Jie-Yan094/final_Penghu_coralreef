@@ -78,7 +78,7 @@ def save_map_to_html(m):
             
         return html_content
     except Exception as e:
-        # 🔴 關鍵修改：顯示具體錯誤訊息，而不是只顯示 "Map Error"
+        # 🔴 關鍵修改：顯示具體錯誤訊息，不是只顯示 "Map Error"
         return f"<div style='color:red; padding:10px; border:1px solid red;'>Map Rendering Error: {str(e)}</div>"
 
 @solara.component
