@@ -188,7 +188,20 @@ def Page():
                 with solara.Column(style={"flex": "2"}): StarfishMap()
                 with solara.Column(style={"flex": "1"}):
                     solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg", width="100%")
-                    solara.Markdown("**棘冠海星**: 七美及南方四島現況已有爆發跡象。")
+                    solara.Markdown("**棘冠海星**: 專吃造礁珊瑚，現況七美及南方四島皆已出現爆發跡象。")
+        # --- 3. 棘冠海星區塊 ---
+        with solara.Card("3. 好餓好餓的珊瑚礁大胃王--棘冠海星 (Crown-of-thorns Starfish)"):
+            solara.Markdown("這裡想把分類跟這些區域疊再一起顯示，並計算各區域每年硬珊瑚面積")
+        with solara.Row(gap="30px", style={"flex-wrap": "wrap-reverse"}):
+            with solara.Column(style={"flex": "3", "min-width": "500px"}):
+                solara.Markdown("### 🚨 爆發警戒區域")
+        StarfishMap()
+        with solara.Details(summary="點擊查看：棘冠海星大爆發的原因？"):
+            solara.Markdown("1. 營養鹽增加\n2. 天敵減少\n3. 氣候變遷")
+
+        with solara.Column(style={"flex": "2", "min-width": "400px", "background-color": "#f8f9fa", "padding": "15px", "border-radius": "10px"}):
+            solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg", width="100%")
+            solara.Markdown("**棘冠海星**: 專吃造礁珊瑚，現況七美及南方四島皆已出現爆發跡象.")
 
         with solara.Card("4. 皮爾森相關性分析"):
             CorrelationAnalysis()
