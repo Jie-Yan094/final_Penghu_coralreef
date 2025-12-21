@@ -285,7 +285,7 @@ def CorrelationAnalysis():
                     colorscale='RdBu_r', zmin=-1, zmax=1,
                     text=corr_total.values.round(2), texttemplate="%{text}", textfont={"size": 14}
                 ))
-                fig_t.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
+                fig_t.update_layout(height=300, margin=dict(l=8, r=8, t=8, b=8))
                 solara.FigurePlotly(fig_t)
 
             # --- 2. 硬珊瑚面積 ---
@@ -303,7 +303,7 @@ def CorrelationAnalysis():
                     colorscale='RdBu_r', zmin=-1, zmax=1,
                     text=corr_hard.values.round(2), texttemplate="%{text}", textfont={"size": 14}
                 ))
-                fig_h.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
+                fig_h.update_layout(height=300, margin=dict(l=8, r=8, t=8, b=8))
                 solara.FigurePlotly(fig_h)
 
             # --- 3. 軟珊瑚面積 ---
@@ -321,7 +321,7 @@ def CorrelationAnalysis():
                     colorscale='RdBu_r', zmin=-1, zmax=1,
                     text=corr_soft.values.round(2), texttemplate="%{text}", textfont={"size": 14}
                 ))
-                fig_s.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
+                fig_s.update_layout(height=300, margin=dict(l=8, r=8, t=8, b=8))
                 solara.FigurePlotly(fig_s)
 
         # 深度洞察
