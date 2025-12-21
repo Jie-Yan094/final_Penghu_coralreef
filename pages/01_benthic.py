@@ -60,10 +60,15 @@ raw_data = {
     "海草 (Seagrass)": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 }
 df_analysis = pd.DataFrame(raw_data)
+
+# 🎨 [修改點 1] 更新圖表的顏色映射，使其與地圖一致
 color_map = {
-    "沙地 (Sand)": "#ffffbe", "沙/藻 (Sand/Algae)": "#e0d05e",
-    "硬珊瑚 (Hard Coral)": "#b19c3a", "軟珊瑚 (Soft Coral)": "#ff6161",
-    "碎石 (Rubble)": "#9bcc4f", "海草 (Seagrass)": "#000000"
+    "沙地 (Sand)": "#ffffbe",
+    "沙/藻 (Sand/Algae)": "#e0d05e",
+    "硬珊瑚 (Hard Coral)": "#00ced1", # 亮藍綠色 (顯眼)
+    "軟珊瑚 (Soft Coral)": "#ff69b4", # 亮粉紅色 (顯眼)
+    "碎石 (Rubble)": "#808080",       # 灰色 (低調)
+    "海草 (Seagrass)": "#9bcc4f"
 }
 
 target_year = solara.reactive(2024)
@@ -115,32 +120,27 @@ def ReefHabitatMap(year, period, radius):
             def smooth(mask, r):
                 return mask.focal_mode(radius=r, units='meters', kernelType='circle')
 
-            # 使用 COPERNICUS/S2_SR_HARMONIZED (地表反射率，較準確)
             img_train = (ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
                          .filterBounds(ROI_RECT).filterDate('2018-01-01', '2018-12-31')
                          .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10))
                          .median().clip(ROI_RECT).select(['B2','B3','B4','B8']))
 
-            # 訓練 Mask
             mask_train = smooth(img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), 10)
             
             label_img = ee.Image('ACA/reef_habitat/v2_0').clip(ROI_RECT).remap(
                 [0, 11, 12, 13, 14, 15, 18], [0, 1, 2, 3, 4, 5, 6], 0
             ).rename('benthic').toByte()
 
-            # --- 平衡參數設定 ---
-            # numPoints: 1000 (足夠多但不會超時)
-            # tileScale: 8 (適度分塊)
+            # 平衡參數設定
             sample = img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(
                 numPoints=1000, 
                 classBand='benthic', 
                 region=ROI_RECT, 
-                scale=30,  # 稍微放寬解析度以加速
+                scale=30,
                 tileScale=8, 
                 geometries=False
             )
             
-            # numberOfTrees: 50 (標準配置)
             classifier = ee.Classifier.smileRandomForest(50).train(sample, 'benthic', img_train.bandNames())
 
             # 3. 目標年份分類
@@ -151,21 +151,30 @@ def ReefHabitatMap(year, period, radius):
 
             target_ndwi_mask = target_img.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
 
-            # 先分類
             classified_raw = target_img.updateMask(target_ndwi_mask).classify(classifier)
 
-            # 後平滑 (Post-classification smoothing)
             if radius > 0:
                 classified = classified_raw.focal_mode(radius=radius, units='meters', kernelType='circle')
             else:
                 classified = classified_raw
 
-            # 4. 視覺化
-            class_vis = {'min': 0, 'max': 6, 'palette': ['000000', 'ffffbe', 'e0d05e', 'b19c3a', '668438', 'ff6161', '9bcc4f']}
+            # 4. 視覺化 - 🎨 [修改點 2] 更新地圖的顏色調色盤
+            # 索引對應: 0:無數據, 1:沙地, 2:沙/藻, 3:硬珊瑚, 4:軟珊瑚, 5:碎石, 6:海草
+            new_palette = [
+                '000000', # 0: 無數據 (黑)
+                'ffffbe', # 1: 沙地 (淺黃)
+                'e0d05e', # 2: 沙/藻 (土黃)
+                '00ced1', # 3: 硬珊瑚 (亮藍綠 - 顯眼!)
+                'ff69b4', # 4: 軟珊瑚 (亮粉紅 - 顯眼!)
+                '808080', # 5: 碎石 (灰色 - 低調!)
+                '9bcc4f'  # 6: 海草 (淺綠)
+            ]
+            class_vis = {'min': 0, 'max': 6, 'palette': new_palette}
             
             m.addLayer(target_img, {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}, f"{year} 衛星影像")
             m.addLayer(classified, class_vis, f"{year} AI分類結果")
-            m.add_legend(title="棲地類別", labels=["無數據", "沙地", "沙/藻", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=class_vis['palette'])
+            # 更新圖例顏色
+            m.add_legend(title="棲地類別", labels=["無數據", "沙地", "沙/藻", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=new_palette)
 
         except Exception as e:
             return f"<div style='color:red'>分類運算錯誤: {str(e)}</div>"
