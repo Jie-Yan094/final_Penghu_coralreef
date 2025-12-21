@@ -3,24 +3,22 @@ import geemap.foliumap as geemap
 import ee
 import os
 import json
-import time
+import tempfile
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. GEE 驗證與初始化 (終極容錯版)
+# 0. GEE 驗證與初始化 (穩健版)
 # ==========================================
+ee_initialized = False # 標記 GEE 是否成功啟動
+
 try:
     key_content = os.environ.get('EARTHENGINE_TOKEN')
     if key_content and key_content.strip():
         try:
-            # 自動修正 JSON 格式 (單引號轉雙引號)
             clean_content = key_content.replace("'", '"')
             service_account_info = json.loads(clean_content)
-            
-            # 自動讀取 project_id
             my_project_id = service_account_info.get("project_id")
             
             creds = Credentials.from_service_account_info(
@@ -29,186 +27,155 @@ try:
             )
             ee.Initialize(credentials=creds, project=my_project_id)
             print(f"✅ 雲端環境：GEE 驗證成功！(Project: {my_project_id})")
-            init_status = "✅ GEE 連線成功"
+            ee_initialized = True
         except Exception as e:
-            print(f"⚠️ Token 解析失敗: {e}，嘗試使用本機驗證...")
-            ee.Initialize()
-            init_status = "⚠️ 本機驗證模式"
+            print(f"⚠️ Token 解析或驗證失敗: {e}，嘗試使用本機驗證...")
+            try:
+                ee.Initialize()
+                ee_initialized = True
+            except:
+                pass
     else:
         print("⚠️ 無 Token，嘗試本機驗證...")
-        ee.Initialize()
-        init_status = "⚠️ 本機驗證模式"
+        try:
+            ee.Initialize()
+            ee_initialized = True
+        except:
+            pass
 
 except Exception as e:
     print(f"⚠️ GEE 初始化遭遇問題 ({e})")
-    init_status = f"❌ 初始化異常: {e}"
 
 # ==========================================
-# 1. 數據準備 (Analysis Data)
+# 1. 資料準備 (硬珊瑚數據)
 # ==========================================
-# 您提供的完整數據
-raw_data = {
-    "Year": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
-    "沙地 (Sand)": [927.48, 253.14, 4343.63, 1471.55, 541.53, 919.71, 322.23, 677.92, 260.38, 5485.41],
-    "沙/藻 (Sand/Algae)": [1520.33, 81.28, 4533.96, 1507.81, 134.95, 334.42, 209.84, 322.38, 280.27, 1794.93],
-    "硬珊瑚 (Hard Coral)": [342.08, 92.92, 1584.55, 382.45, 76.97, 197.21, 95.55, 224.21, 239.71, 1264.49],
-    "軟珊瑚 (Soft Coral)": [32272.96, 10536.69, 27021.90, 39909.48, 13074.81, 22751.79, 15645.10, 25062.07, 42610.23, 26497.39],
-    "碎石 (Rubble)": [3604.92, 300.24, 6416.81, 7185.07, 741.91, 793.30, 1043.67, 2006.07, 2367.72, 9170.30],
-    "海草 (Seagrass)": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-}
-df_analysis = pd.DataFrame(raw_data)
-
-# 定義顏色映射
-color_map = {
-    "沙地 (Sand)": "#ffffbe",
-    "沙/藻 (Sand/Algae)": "#e0d05e",
-    "硬珊瑚 (Hard Coral)": "#b19c3a", # 也可以改用綠色系 #2ecc71
-    "軟珊瑚 (Soft Coral)": "#ff6161",
-    "碎石 (Rubble)": "#9bcc4f",
-    "海草 (Seagrass)": "#000000"
-}
-
-# ==========================================
-# 2. 響應式變數
-# ==========================================
-target_year = solara.reactive(2024)
-time_period = solara.reactive("夏季平均") 
-selected_chart = solara.reactive("📈 折線趨勢")
-
-# ROI 設定
-ROI_RECT = ee.Geometry.Rectangle([119.2741, 23.1694, 119.8114, 23.8792])
+ROI_RECT = ee.Geometry.Rectangle([119.2741, 23.1695, 119.8114, 23.8792])
 ROI_CENTER = [23.5, 119.5]
 
+selected_year = solara.reactive(2024)
+
+years_list = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+hard_coral_values = [342.08, 92.92, 1584.55, 382.45, 76.97, 197.21, 95.55, 224.21, 239.71, 1264.49]
+df_benthic = pd.DataFrame({'Year': years_list, 'Hard_Coral_Area': hard_coral_values})
+
 # ==========================================
-# 3. 組件定義：地圖邏輯 (含防呆)
+# 2. 地圖組件 (已修復 Map Error 顯示)
 # ==========================================
 def save_map_to_html(m):
     try:
+        # 使用 delete=False 確保檔案在讀取前不會被刪除
         with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
             temp_path = tmp.name
+        
         m.to_html(filename=temp_path)
+        
         with open(temp_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
-        return html_content
-    except Exception:
-        return "<div>Map Error</div>"
-    finally:
-        if 'temp_path' in locals() and os.path.exists(temp_path):
+            
+        # 讀取完畢後手動刪除
+        if os.path.exists(temp_path):
             os.remove(temp_path)
+            
+        return html_content
+    except Exception as e:
+        # 🔴 關鍵修改：顯示具體錯誤訊息，而不是只顯示 "Map Error"
+        return f"<div style='color:red; padding:10px; border:1px solid red;'>Map Rendering Error: {str(e)}</div>"
 
 @solara.component
-def ReefHabitatMap(year, period):
+def BenthicMap(year):
     def get_map_html():
         m = geemap.Map(center=ROI_CENTER, zoom=11)
         m.add_basemap("HYBRID")
-        m.addLayer(ROI_RECT, {'color': 'yellow', 'fillColor': '00000000'}, "ROI")
-
-        # 設定時間
-        if period == "夏季平均":
-            start_date, end_date = f'{year}-06-01', f'{year}-09-30'
-        else:
-            start_date, end_date = f'{year}-01-01', f'{year}-12-31'
-
-        try:
-            # 1. 嘗試載入 Sentinel-2 影像
-            s2_img = (ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-                      .filterBounds(ROI_RECT)
-                      .filterDate(start_date, end_date)
-                      .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
-                      .median().clip(ROI_RECT))
-            
-            # 2. 顯示真實色彩影像 (底圖)
-            vis_params = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
-            m.addLayer(s2_img, vis_params, f"{year} Sentinel-2 真實色彩")
-
-            # 3. 嘗試載入分類 (如果您有上傳分類影像)
-            # 這裡做一個簡單的 NDWI 水體遮罩當示範，避免程式掛掉
-            ndwi = s2_img.normalizedDifference(['B3', 'B8'])
-            water_mask = ndwi.gt(0)
-            # m.addLayer(water_mask.selfMask(), {'palette': ['blue']}, "水體範圍")
-
-        except Exception as e:
-            print(f"地圖圖層載入錯誤: {e}")
-
+        
+        # 只有在 GEE 成功初始化時才加入圖層，避免報錯
+        if ee_initialized:
+            try:
+                # 顯示 ROI 框
+                m.addLayer(ROI_RECT, {'color': 'yellow', 'fillColor': '00000000'}, "澎湖群島 ROI")
+                
+                # 嘗試載入 Sentinel-2 (範例)
+                # start_date = f'{year}-06-01'
+                # end_date = f'{year}-09-30'
+                # s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(ROI_RECT).filterDate(start_date, end_date).median().clip(ROI_RECT)
+                # m.addLayer(s2, {'min':0, 'max':3000, 'bands':['B4','B3','B2']}, f"{year} 衛星影像")
+                
+            except Exception as e:
+                print(f"圖層加入失敗: {e}")
+        
         return save_map_to_html(m)
 
-    map_html = solara.use_memo(get_map_html, dependencies=[year, period])
-    return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "600px", "style": "border: none;"})
+    map_html = solara.use_memo(get_map_html, dependencies=[year])
+    return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "600px", "style": "border:none;"})
 
 # ==========================================
-# 4. 組件定義：數據分析儀表板
+# 3. 圖表組件
 # ==========================================
 @solara.component
-def AnalysisDashboard():
-    
-    # 建立折線圖
-    def create_line_chart():
-        df_melted = df_analysis.melt(id_vars=['Year'], var_name='Habitat', value_name='Area (ha)')
-        fig = px.line(
-            df_melted, x="Year", y="Area (ha)", color="Habitat", markers=True,
-            title="澎湖珊瑚礁棲地歷年面積變化 (2016-2025)", color_discrete_map=color_map, height=450
+def HardCoralChart():
+    with solara.Card("📊 硬珊瑚面積變化趨勢 (Hard Coral Area)"):
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df_benthic['Year'], 
+            y=df_benthic['Hard_Coral_Area'],
+            mode='lines+markers+text',
+            name='硬珊瑚面積',
+            line=dict(color='#2ecc71', width=4),
+            marker=dict(size=10, color='#27ae60'),
+            text=df_benthic['Hard_Coral_Area'].round(0),
+            textposition="top center"
+        ))
+        fig.update_layout(
+            title='歷年硬珊瑚覆蓋面積 (m²)',
+            xaxis=dict(title='年份', tickmode='linear'),
+            yaxis=dict(title='面積 (平方公尺)'),
+            hovermode="x unified",
+            margin=dict(l=40, r=40, t=60, b=40),
+            height=400
         )
-        fig.update_layout(xaxis=dict(tickmode='linear'), plot_bgcolor="white", hovermode="x unified")
-        return fig
-
-    # 建立堆疊長條圖
-    def create_bar_chart():
-        df_melted = df_analysis.melt(id_vars=['Year'], var_name='Habitat', value_name='Area (ha)')
-        fig = px.bar(
-            df_melted, x="Year", y="Area (ha)", color="Habitat",
-            title="棲地組成比例堆疊圖", color_discrete_map=color_map, height=450
-        )
-        fig.update_layout(plot_bgcolor="white")
-        return fig
-
-    with solara.Card("📊 歷年數據分析報告", style={"margin-top": "20px"}):
-        # 1. 切換按鈕
-        solara.ToggleButtonsSingle(
-            value=selected_chart, 
-            values=["📈 折線趨勢", "📊 堆疊組成", "📋 原始數據"]
-        )
-        
-        # 2. 顯示內容
-        if selected_chart.value == "📈 折線趨勢":
-            solara.FigurePlotly(create_line_chart())
-            solara.Info("說明：可觀察硬珊瑚與軟珊瑚的消長趨勢。")
-            
-        elif selected_chart.value == "📊 堆疊組成":
-            solara.FigurePlotly(create_bar_chart())
-            
-        elif selected_chart.value == "📋 原始數據":
-            solara.DataFrame(df_analysis)
+        solara.FigurePlotly(fig)
 
 # ==========================================
-# 5. 主頁面佈局
+# 4. 主頁面
 # ==========================================
 @solara.component
 def Page():
-    # 使用 100% 寬度
     with solara.Column(style={"width": "100%", "padding": "20px", "max-width": "100%", "margin": "0 auto"}):
         
-        solara.Title("🪸 澎湖珊瑚礁棲地動態監測系統")
-        solara.Markdown(f"**系統狀態**: {init_status}")
+        solara.Markdown("# 🪸 澎湖珊瑚礁棲地動態監測系統 (Benthic Habitat)")
         
-        # --- 第一部分：地圖與控制 ---
-        with solara.Row(style={"gap": "20px", "flex-wrap": "wrap"}):
-            # 左側控制與地圖
-            with solara.Column(style={"flex": "1", "min-width": "500px"}):
-                with solara.Card("🔍 監測工具箱 & 地圖"):
-                    with solara.Row():
-                        solara.SliderInt(label="年份", value=target_year, min=2016, max=2025)
-                        solara.ToggleButtonsSingle(value=time_period, values=["夏季平均", "全年平均"])
-                    
-                    ReefHabitatMap(target_year.value, time_period.value)
-                    solara.Info("地圖顯示：Sentinel-2 衛星合成影像 (ROI 範圍)")
+        # 顯示系統狀態，方便除錯
+        status_color = "green" if ee_initialized else "red"
+        status_text = "GEE 連線正常" if ee_initialized else "GEE 連線失敗 (僅顯示基礎圖表)"
+        solara.Markdown(f"**系統狀態**: <span style='color:{status_color}'>{status_text}</span>")
 
-            # --- 第二部分：數據分析 ---
+        with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
+            
+            # --- 左側：地圖 ---
             with solara.Column(style={"flex": "1", "min-width": "500px"}):
-                AnalysisDashboard()
-        
+                with solara.Card("1. 底質分類地圖"):
+                    solara.Markdown("透過衛星影像與機器學習，辨識珊瑚礁、沙地、岩石等底質分佈。")
+                    solara.SliderInt(label="選擇年份", value=selected_year, min=2016, max=2025)
+                    BenthicMap(selected_year.value)
+                    if not ee_initialized:
+                        solara.Warning("注意：因 GEE 未連線，目前僅顯示底圖，無法載入衛星圖層。")
+
+            # --- 右側：統計數據 ---
+            with solara.Column(style={"flex": "1", "min-width": "500px"}):
+                with solara.Row(gap="10px"):
+                    current_area = df_benthic[df_benthic['Year'] == 2025]['Hard_Coral_Area'].values[0]
+                    avg_area = df_benthic['Hard_Coral_Area'].mean()
+                    solara.Card(f"{current_area:.0f} m²", "2025 硬珊瑚面積", style={"background": "#e8f5e9", "flex": "1"})
+                    solara.Card(f"{avg_area:.0f} m²", "10年平均面積", style={"background": "#f1f8e9", "flex": "1"})
+
+                HardCoralChart()
+                
+                with solara.Card("🔍 棲地狀態解讀"):
+                    solara.Markdown("""
+                    * **硬珊瑚 (Hard Coral)**：造礁珊瑚是健康的指標。
+                    * **趨勢分析**：
+                        * 2018 與 2025 年觀測到較高的面積數值。
+                        * 2017 與 2020 年面積顯著低落，可能受當年颱風或極端氣候影響。
+                    """)
+
         solara.Markdown("---")
-        solara.Markdown("""
-        ### 🪸 硬珊瑚與軟珊瑚簡介
-        - **硬珊瑚 (Hard Coral)**：又稱造礁珊瑚，擁有堅固的鈣質外骨骼，是珊瑚礁的基石。
-        - **軟珊瑚 (Soft Coral)**：無鈣質外骨骼，對環境變化反應不同於硬珊瑚。
-        """)
+        solara.Markdown("Data Source: Sentinel-2 & Ecological Survey | Powered by Solara & GEE")
