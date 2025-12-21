@@ -259,59 +259,78 @@ def StarfishMap():
     return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "500px", "style": "border:none;"})
 
 # ==========================================
-# 6. 組件：相關係數分析 (雙重對照版)
+# 6. 組件：相關係數分析 (三重對照版：總面積 vs 硬珊瑚 vs 軟珊瑚)
 # ==========================================
 @solara.component
 def CorrelationAnalysis():
-    with solara.Card("🧮 統計分析：皮爾森相關係數 (總面積 vs 硬珊瑚)"):
+    # 先行計算軟珊瑚數值
+    soft_coral_values = [t - h for t, h in zip(total_coral_values, hard_coral_values)]
+
+    with solara.Card("🧮 統計分析：皮爾森相關係數 (環境因子 vs 珊瑚分類)"):
         
-        with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
+        with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
             
-            # --- 左欄：總珊瑚面積 ---
-            with solara.Column(style={"flex": "1", "min-width": "400px"}):
+            # --- 1. 總珊瑚面積 ---
+            with solara.Column(style={"flex": "1", "min-width": "350px"}):
                 solara.Markdown("### 🔵 總珊瑚面積 (Total)")
-                
                 df_total = pd.DataFrame({
-                    '夏季海溫 (SST)': df_mixed['SST_Summer'],
-                    '優養化 (NDCI)': df_ndci['NDCI_Mean'],
-                    '總珊瑚面積': total_coral_values
+                    'SST': df_mixed['SST_Summer'],
+                    'NDCI': df_ndci['NDCI_Mean'],
+                    'Total': total_coral_values
                 })
                 corr_total = df_total.corr(method='pearson')
                 
                 fig_t = go.Figure(data=go.Heatmap(
                     z=corr_total.values, x=corr_total.columns, y=corr_total.index,
                     colorscale='RdBu_r', zmin=-1, zmax=1,
-                    text=corr_total.values.round(2), texttemplate="%{text}", textfont={"size": 16}
+                    text=corr_total.values.round(2), texttemplate="%{text}", textfont={"size": 14}
                 ))
-                fig_t.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20))
+                fig_t.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
                 solara.FigurePlotly(fig_t)
 
-            # --- 右欄：硬珊瑚面積 ---
-            with solara.Column(style={"flex": "1", "min-width": "400px"}):
+            # --- 2. 硬珊瑚面積 ---
+            with solara.Column(style={"flex": "1", "min-width": "350px"}):
                 solara.Markdown("### 🟢 硬珊瑚面積 (Hard Only)")
-                
                 df_hard = pd.DataFrame({
-                    '夏季海溫 (SST)': df_mixed['SST_Summer'],
-                    '優養化 (NDCI)': df_ndci['NDCI_Mean'],
-                    '硬珊瑚面積': hard_coral_values
+                    'SST': df_mixed['SST_Summer'],
+                    'NDCI': df_ndci['NDCI_Mean'],
+                    'Hard': hard_coral_values
                 })
                 corr_hard = df_hard.corr(method='pearson')
                 
                 fig_h = go.Figure(data=go.Heatmap(
                     z=corr_hard.values, x=corr_hard.columns, y=corr_hard.index,
                     colorscale='RdBu_r', zmin=-1, zmax=1,
-                    text=corr_hard.values.round(2), texttemplate="%{text}", textfont={"size": 16}
+                    text=corr_hard.values.round(2), texttemplate="%{text}", textfont={"size": 14}
                 ))
-                fig_h.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20))
+                fig_h.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
                 solara.FigurePlotly(fig_h)
 
-        # 簡單洞察
+            # --- 3. 軟珊瑚面積 ---
+            with solara.Column(style={"flex": "1", "min-width": "350px"}):
+                solara.Markdown("### 🟣 軟珊瑚面積 (Soft Only)")
+                df_soft = pd.DataFrame({
+                    'SST': df_mixed['SST_Summer'],
+                    'NDCI': df_ndci['NDCI_Mean'],
+                    'Soft': soft_coral_values
+                })
+                corr_soft = df_soft.corr(method='pearson')
+                
+                fig_s = go.Figure(data=go.Heatmap(
+                    z=corr_soft.values, x=corr_soft.columns, y=corr_soft.index,
+                    colorscale='RdBu_r', zmin=-1, zmax=1,
+                    text=corr_soft.values.round(2), texttemplate="%{text}", textfont={"size": 14}
+                ))
+                fig_s.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
+                solara.FigurePlotly(fig_s)
+
+        # 深度洞察
         solara.Markdown("""
-        **📊 比較洞察**：
-        * 夏季海溫 (SST) vs 總珊瑚礁面積：-0.15 / 硬珊瑚面積：-0.18 : 雖然呈現出的相關度數值較低，但仍顯示出海溫升高對珊瑚健康的負面影響。
-        * 優養化指標 (NDCI) vs 總珊瑚面積：+0.19 / 硬珊瑚面積：-0.29 : 優養化對總珊瑚似乎有輕微正面影響，但對硬珊瑚則有明顯負面影響，顯示不同珊瑚類型對環境壓力的反應不同。
-        * **硬珊瑚** 對海溫(SST)與優養化指標(NDCI)的負相關程度應比總珊瑚更明顯，因為軟珊瑚耐受性較高，可能會稀釋環境壓力的訊號。
-        """, style="font-size: 0.9em; color: gray;")
+        **📊 數據洞察與科學意義**：
+        1. **負相關顯著性 (紅色區塊)**：觀察 **硬珊瑚** 與 SST/NDCI 的交界處。通常硬珊瑚會呈現較深程度的負相關，這反映了造礁珊瑚對水溫與水質惡化的極高敏感度。
+        2. **軟珊瑚的適應性**：對比 **軟珊瑚** 的熱圖，您可能會發現其相關係數較低，甚至在環境壓力增加（如 NDCI 升高）時呈現微弱正相關，這顯示軟珊瑚在逆境中可能具備比硬珊瑚更強的佔位競爭力。
+        3. **總面積的誤導性**：**總珊瑚面積** 的相關性往往介於兩者之間，若僅觀察總面積，可能會忽略掉硬珊瑚正在快速消失、而軟珊瑚取而代之的「生態結構性轉變」。
+        """, style="font-size: 0.95em; color: #444; background-color: #f9f9f9; padding: 15px; border-radius: 8px;")
 
 # ==========================================
 # 7. 主頁面
