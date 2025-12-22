@@ -83,10 +83,7 @@ def Page():
                     # 這裡要放照片-注射海星
                     solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg", width="100%")
                 
-                with solara.Column(style={"flex": "1", "min-width": "450px"}):
-                    solara.Markdown("#### 🌿 珊瑚復育技術")
-                    solara.Markdown("* **珊瑚種植：** 採集天然殘枝，於陸域養殖中心培育後，再利用不鏽鋼架或生態磚進行海域移植復育。")
-
+               
         # --- 3. 珊瑚復育區塊 (行動二) ---
         with solara.Card("🪸 行動二：珊瑚復育 "):
             with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):

@@ -102,7 +102,7 @@ def Page():
     
     with solara.Column(align="center", style={"text-align": "center", "width": "100%"}):
         
-        solara.Markdown("# 從衛星到海底：構建澎湖珊瑚礁多維度互動式監測平台)")
+        solara.Markdown("# 從衛星到海底：構建澎湖珊瑚礁多維度互動式監測平台")
 
         solara.Markdown("### 專案簡介")
         with solara.Column(style={"max-width": "800px"}):
