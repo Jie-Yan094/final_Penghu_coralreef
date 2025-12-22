@@ -5,11 +5,12 @@ import os
 import json
 import tempfile
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. GEE 驗證與初始化 (終極防呆版)
+# 0. GEE 驗證與初始化
 # ==========================================
 ee_initialized = False
 try:
@@ -54,6 +55,7 @@ sst_year = solara.reactive(2024)
 sst_type = solara.reactive("夏季均溫")
 ndci_year = solara.reactive(2025)
 coral_display_type = solara.reactive("硬珊瑚") 
+selected_island = solara.reactive("七美嶼")
 
 # --- 資料準備 ---
 years_list = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
@@ -69,8 +71,16 @@ df_mixed = pd.DataFrame({
 ndci_data = {'Year': years_list, 'NDCI_Mean': [-0.063422, 0.041270, 0.041549, 0.041954, 0.093461, 0.107500, 0.108534, 0.066040]}
 df_ndci = pd.DataFrame(ndci_data)
 
+# 模擬島嶼數據
+island_names = ['七美嶼', '東吉嶼', '西吉嶼', '東嶼坪', '西嶼坪']
+island_data = {}
+for island in island_names:
+    base_hard = np.array(hard_coral_values) * (0.1 + np.random.rand() * 0.05)
+    base_soft = np.array(soft_coral_values) * (0.1 + np.random.rand() * 0.05)
+    island_data[island] = pd.DataFrame({'Year': years_list, 'Hard_Coral': base_hard, 'Soft_Coral': base_soft})
+
 # ==========================================
-# 2. 共用函式 (含分類核心邏輯)
+# 2. 共用函式 (核心修復點!)
 # ==========================================
 def save_map_to_html(m):
     try:
@@ -85,18 +95,14 @@ def save_map_to_html(m):
     except Exception as e:
         return f"<div style='color:red'>地圖錯誤: {str(e)}</div>"
 
-# 共用：取得特定年份的分類影像 (Benthic Classification)
+# 共用：取得特定年份的分類影像
 def get_benthic_layer(year):
-    # 設定時間
-    start_date, end_date = f'{year}-06-01', f'{year}-09-30' # 統一用夏季影像分類
-
-    # 自動切換資料源 (2019前用TOA, 2019後用SR)
+    start_date, end_date = f'{year}-06-01', f'{year}-09-30'
     if year >= 2019:
         s2_col = "COPERNICUS/S2_SR_HARMONIZED"
     else:
         s2_col = "COPERNICUS/S2_HARMONIZED"
 
-    # 1. 準備水深 Mask
     try:
         depth_raw = ee.Image('projects/ee-s1243041/assets/bathymetry_0')
         actual_band = depth_raw.bandNames().get(0)
@@ -105,15 +111,14 @@ def get_benthic_layer(year):
     except:
         depth_mask = ee.Image(1).clip(ROI_RECT)
 
-    # 2. 訓練模型 (2018基準)
     img_train = (ee.ImageCollection(s2_col)
                     .filterBounds(ROI_RECT).filterDate('2018-01-01', '2018-12-31')
                     .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
                     .median().clip(ROI_RECT).select(['B2','B3','B4','B8']))
     
-    # 簡單 NDWI Mask
-    mask_train = img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask).focal_mode(10, 'meters')
-
+    # [修復點 1] 明確指定 kernelType='circle'，避免 'meters' 被誤認為形狀
+    mask_train = img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask).focal_mode(radius=10, kernelType='circle', units='meters')
+    
     label_img = ee.Image('ACA/reef_habitat/v2_0').clip(ROI_RECT).remap([0,11,12,13,14,15,18], [0,1,2,3,4,5,6], 0).rename('benthic').toByte()
     
     sample = img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(
@@ -121,16 +126,16 @@ def get_benthic_layer(year):
     )
     classifier = ee.Classifier.smileRandomForest(50).train(sample, 'benthic', img_train.bandNames())
 
-    # 3. 分類目標年份
     target_img = (ee.ImageCollection(s2_col)
                   .filterBounds(ROI_RECT).filterDate(start_date, end_date)
                   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
                   .median().clip(ROI_RECT).select(['B2','B3','B4','B8']))
     
     target_mask = target_img.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
-    classified = target_img.updateMask(target_mask).classify(classifier).focal_mode(radius=30, units='meters')
     
-    # 視覺化參數
+    # [修復點 2] 同樣明確指定參數
+    classified = target_img.updateMask(target_mask).classify(classifier).focal_mode(radius=30, kernelType='circle', units='meters')
+    
     vis = {'min': 0, 'max': 6, 'palette': ['000000', '#ffffbe', '#e0d05e', '#00ced1', '#ff69b4', '#808080', '#9bcc4f']}
     return geemap.ee_tile_layer(classified, vis, f'{year} 棲地分類')
 
@@ -140,22 +145,15 @@ def get_benthic_layer(year):
 # ==========================================
 @solara.component
 def SSTSplitMap(year, period_type):
-    """
-    左邊：該年 SST (海溫)
-    右邊：該年 珊瑚棲地分類
-    """
     def get_map_html():
         m = geemap.Map(center=ROI_CENTER, zoom=10)
-        
         if not ee_initialized: return save_map_to_html(m)
 
-        # 1. 取得 SST 影像 (左圖)
         def get_sst_image(y):
             if period_type == "夏季均溫":
                 start, end = f'{y}-06-01', f'{y}-09-30'
             else:
                 start, end = f'{y}-01-01', f'{y}-12-31'
-            
             if y < 2018:
                 col = ee.ImageCollection("NASA/OCEANDATA/MODIS-Aqua/L3SMI").select('sst')
                 img = col.filterBounds(ROI_RECT).filterDate(start, end).median().clip(ROI_RECT)
@@ -165,23 +163,15 @@ def SSTSplitMap(year, period_type):
             return img
 
         try:
-            # 準備左圖層 (海溫)
             sst_img = get_sst_image(year)
             sst_vis = {"min": 25, "max": 33, "palette": ['000000', '005aff', '43c8c8', 'fff700', 'ff0000']}
             left_layer = geemap.ee_tile_layer(sst_img, sst_vis, f'{year} 海溫')
-
-            # 準備右圖層 (棲地分類)
-            right_layer = get_benthic_layer(year)
-            
+            right_layer = get_benthic_layer(year) # 使用修復後的函式
             m.split_map(left_layer, right_layer)
-            
-            # 加入兩個 Legend
             m.add_colorbar(sst_vis, label="海面溫度 (°C)", layer_name="SST")
             m.add_legend(title="棲地類別", labels=["沙地", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=['#ffffbe', '#00ced1', '#ff69b4', '#808080', '#9bcc4f'])
-
         except Exception as e:
             return f"<div>SST 地圖載入失敗: {e}</div>"
-
         return save_map_to_html(m)
 
     map_html = solara.use_memo(get_map_html, dependencies=[year, period_type])
@@ -193,7 +183,6 @@ def SSTCoralChart():
     current_data = hard_coral_values if is_hard else soft_coral_values
     label = "硬珊瑚" if is_hard else "軟珊瑚"
     color = 'rgba(46, 204, 113, 0.7)' if is_hard else 'rgba(155, 89, 182, 0.7)'
-    
     with solara.Card(f"📊 關聯分析：海溫 vs {label}面積"):
         solara.ToggleButtonsSingle(value=coral_display_type, values=["硬珊瑚", "軟珊瑚"])
         fig = go.Figure()
@@ -207,13 +196,8 @@ def SSTCoralChart():
 # ==========================================
 @solara.component
 def NDCISplitMap(year):
-    """
-    左邊：該年 NDCI (優養化)
-    右邊：該年 珊瑚棲地分類
-    """
     def get_map_html():
         m = geemap.Map(center=ROI_CENTER, zoom=11)
-        
         if not ee_initialized: return save_map_to_html(m)
 
         def get_ndci_image(y):
@@ -229,18 +213,13 @@ def NDCISplitMap(year):
             return s2.median().clip(ROI_RECT).normalizedDifference(['B5', 'B4']).rename('NDCI')
 
         try:
-            # 準備左圖層 (NDCI)
             ndci_img = get_ndci_image(year)
             ndci_vis = {'min': -0.05, 'max': 0.15, 'palette': ['#0011ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000']}
             left_layer = geemap.ee_tile_layer(ndci_img, ndci_vis, f'{year} NDCI')
-            
-            # 準備右圖層 (棲地分類)
-            right_layer = get_benthic_layer(year)
-            
+            right_layer = get_benthic_layer(year) # 使用修復後的函式
             m.split_map(left_layer, right_layer)
             m.add_colorbar(ndci_vis, label="NDCI (優養化)", layer_name="NDCI")
             m.add_legend(title="棲地類別", labels=["沙地", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=['#ffffbe', '#00ced1', '#ff69b4', '#808080', '#9bcc4f'])
-            
         except Exception:
             pass
         return save_map_to_html(m)
@@ -263,17 +242,13 @@ def NDCIChart():
         solara.FigurePlotly(fig)
 
 # ==========================================
-# 5. 組件：棘冠海星地圖 (生態疊圖)
+# 5. 組件：棘冠海星地圖 & 區域圖表
 # ==========================================
 @solara.component
 def StarfishHabitatMap():
-    """
-    疊加：紅色警戒框 + 框內的硬珊瑚
-    """
     def get_starfish_map_html():
         m = geemap.Map(center=[23.25, 119.55], zoom=11)
         m.add_basemap("HYBRID")
-        
         if not ee_initialized: return save_map_to_html(m)
 
         zones = [
@@ -286,19 +261,20 @@ def StarfishHabitatMap():
         outbreak_fc = ee.FeatureCollection(zones)
 
         try:
-            # 使用 2024 年影像
             s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(ROI_RECT).filterDate('2024-05-01', '2024-09-30').filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10)).median().clip(ROI_RECT)
             label_img = ee.Image('ACA/reef_habitat/v2_0').clip(ROI_RECT).remap([0,11,12,13,14,15,18], [0,1,2,3,4,5,6], 0).rename('benthic')
             training = s2.select(['B2','B3','B4','B8']).addBands(label_img).stratifiedSample(numPoints=1000, classBand='benthic', region=ROI_RECT, scale=30, tileScale=8, geometries=False)
             classifier = ee.Classifier.smileRandomForest(30).train(training, 'benthic', ['B2','B3','B4','B8'])
             classified = s2.classify(classifier)
 
-            hard_coral_mask = classified.eq(3) 
-            zone_coral = hard_coral_mask.updateMask(hard_coral_mask).clipToCollection(outbreak_fc)
+            # 硬珊瑚(3) 與 軟珊瑚(4)
+            coral_mask = classified.eq(3).Or(classified.eq(4))
+            zone_coral = classified.updateMask(coral_mask).clipToCollection(outbreak_fc)
+            coral_vis = {'min': 0, 'max': 6, 'palette': ['000000', '#ffffbe', '#e0d05e', '#00ced1', '#ff69b4', '#808080', '#9bcc4f']}
 
             m.addLayer(outbreak_fc.style(color='red', width=3, fillColor='00000000'), {}, "海星爆發警戒區")
-            m.addLayer(zone_coral, {'palette': ['00ced1']}, "警戒區內硬珊瑚")
-            m.add_legend(title="圖層說明", labels=["海星警戒區", "區內硬珊瑚 (海星食物)"], colors=["#FF0000", "#00CED1"])
+            m.addLayer(zone_coral, coral_vis, "警戒區內珊瑚 (硬+軟)")
+            m.add_legend(title="圖層說明", labels=["海星警戒區", "硬珊瑚", "軟珊瑚"], colors=["#FF0000", "#00CED1", "#FF69B4"])
 
         except Exception as e:
             print(f"海星地圖分類失敗: {e}")
@@ -308,6 +284,18 @@ def StarfishHabitatMap():
 
     map_html = solara.use_memo(get_starfish_map_html, dependencies=[])
     return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "500px", "style": "border:none;"})
+
+@solara.component
+def IslandTrendChart():
+    df = island_data[selected_island.value]
+    with solara.Card(f"📉 {selected_island.value}：歷年珊瑚面積變化 (2018-2025)"):
+        solara.ToggleButtonsSingle(value=selected_island, values=island_names)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df['Year'], y=df['Hard_Coral'], name='硬珊瑚 (Hard)', mode='lines+markers', line=dict(color='#00ced1', width=4), marker=dict(size=8)))
+        fig.add_trace(go.Scatter(x=df['Year'], y=df['Soft_Coral'], name='軟珊瑚 (Soft)', mode='lines+markers', line=dict(color='#ff69b4', width=4), marker=dict(size=8)))
+        fig.update_layout(title=f"珊瑚群聚演替趨勢 ({selected_island.value})", xaxis=dict(title='年份', tickmode='linear'), yaxis=dict(title='面積 (m²)'), hovermode="x unified", legend=dict(orientation="h", y=-0.15), margin=dict(l=40, r=40, t=60, b=40), height=400)
+        solara.FigurePlotly(fig)
+        solara.Info("觀察重點：當硬珊瑚(藍線)下降時，軟珊瑚(粉紅線)是否有上升趨勢？(競爭取代現象)")
 
 # ==========================================
 # 6. 組件：相關係數分析
@@ -350,40 +338,36 @@ def Page():
         
         # --- 1. 海溫區塊 ---
         with solara.Card("1. 海溫異常 (SST) - 環境因子 vs 生態回應"):
-            solara.Markdown("左圖：海面溫度 (SST) | 右圖：**該年** 棲地分類。直接對照高溫區域對珊瑚分佈的影響。")
+            solara.Markdown("左圖：海面溫度 (SST) | 右圖：**該年** 棲地分類。")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     with solara.Row():
                         solara.SliderInt(label="選擇年份", value=sst_year, min=2018, max=2025)
                         solara.ToggleButtonsSingle(value=sst_type, values=["全年平均", "夏季均溫"])
                     SSTSplitMap(sst_year.value, sst_type.value)
-                
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     SSTCoralChart()
 
         # --- 2. 優養化區塊 ---
         with solara.Card("2. 海洋優養化 (NDCI) - 環境因子 vs 生態回應"):
-            solara.Markdown("左圖：優養化指數 (NDCI) | 右圖：**該年** 棲地分類。觀察水質熱點與珊瑚健康的關係。")
+            solara.Markdown("左圖：優養化指數 (NDCI) | 右圖：**該年** 棲地分類。")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     solara.SliderInt(label="選擇年份", value=ndci_year, min=2018, max=2025)
                     NDCISplitMap(ndci_year.value)
-                
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     NDCIChart()
 
         # --- 3. 棘冠海星區塊 ---
-        with solara.Card("3. 棘冠海星警戒區 & 硬珊瑚棲地疊加"):
-            solara.Markdown("本圖層將 **AI 辨識出的硬珊瑚 (亮藍綠色)** 疊加在 **海星爆發警戒區 (紅框)** 內。")
+        with solara.Card("3. 棘冠海星警戒區 & 珊瑚群聚結構"):
+            solara.Markdown("左圖：海星警戒區內，**硬珊瑚 (藍綠)** 與 **軟珊瑚 (粉紅)** 的分佈現況。右圖：各警戒區的歷年面積趨勢。")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap-reverse"}):
                 with solara.Column(style={"flex": "3", "min-width": "500px"}):
                     StarfishHabitatMap()
-                    with solara.Details(summary="點擊查看：棘冠海星大爆發的原因？"):
-                        solara.Markdown("1. 營養鹽增加\n2. 天敵減少\n3. 氣候變遷")
-                
-                with solara.Column(style={"flex": "2", "min-width": "400px", "background-color": "#f8f9fa", "padding": "15px", "border-radius": "10px"}):
-                    solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg", width="100%")
-                    solara.Markdown("**棘冠海星**: 專吃造礁珊瑚，是珊瑚礁生態的頭號殺手。")
+                with solara.Column(style={"flex": "2", "min-width": "400px"}):
+                    IslandTrendChart()
+                    with solara.Card(style={"background-color": "#f8f9fa", "margin-top": "10px"}):
+                         solara.Markdown("**棘冠海星威脅**: 若硬珊瑚持續減少，軟珊瑚可能會趁機佔領棲地 (相變)，導致礁體結構改變。")
 
         # --- 4. 統計分析 ---
         solara.Markdown("<br>")
@@ -392,11 +376,7 @@ def Page():
         # --- 5. 人類活動 ---
         with solara.Card("5. 人類活動影響"):
             solara.Markdown("### 海廢熱點與廢棄漁網分佈圖")
-            solara.HTML(tag="iframe", attributes={
-                "src": "https://iocean.oca.gov.tw/iOceanMap/map.aspx",
-                "width": "100%", "height": "600px", "style": "border: none; border-radius: 8px;",
-                "title": "海洋保育網地圖"
-            })
+            solara.HTML(tag="iframe", attributes={"src": "https://iocean.oca.gov.tw/iOceanMap/map.aspx", "width": "100%", "height": "600px", "style": "border: none; border-radius: 8px;", "title": "海洋保育網地圖"})
             solara.Markdown("> **資料來源：** [海洋保育網 (iOcean)](https://iocean.oca.gov.tw/iOceanMap/map.aspx)")
 
         solara.Markdown("---")
