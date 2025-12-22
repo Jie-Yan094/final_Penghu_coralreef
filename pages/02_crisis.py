@@ -116,7 +116,7 @@ def get_benthic_layer(year):
                     .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
                     .median().clip(ROI_RECT).select(['B2','B3','B4','B8']))
     
-    # [修復點 1] 明確指定 kernelType='circle'，避免 'meters' 被誤認為形狀
+    # 明確指定 kernelType
     mask_train = img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask).focal_mode(radius=10, kernelType='circle', units='meters')
     
     label_img = ee.Image('ACA/reef_habitat/v2_0').clip(ROI_RECT).remap([0,11,12,13,14,15,18], [0,1,2,3,4,5,6], 0).rename('benthic').toByte()
@@ -133,7 +133,7 @@ def get_benthic_layer(year):
     
     target_mask = target_img.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask)
     
-    # [修復點 2] 同樣明確指定參數
+    # 明確指定 kernelType
     classified = target_img.updateMask(target_mask).classify(classifier).focal_mode(radius=30, kernelType='circle', units='meters')
     
     vis = {'min': 0, 'max': 6, 'palette': ['000000', '#ffffbe', '#e0d05e', '#00ced1', '#ff69b4', '#808080', '#9bcc4f']}
@@ -166,7 +166,7 @@ def SSTSplitMap(year, period_type):
             sst_img = get_sst_image(year)
             sst_vis = {"min": 25, "max": 33, "palette": ['000000', '005aff', '43c8c8', 'fff700', 'ff0000']}
             left_layer = geemap.ee_tile_layer(sst_img, sst_vis, f'{year} 海溫')
-            right_layer = get_benthic_layer(year) # 使用修復後的函式
+            right_layer = get_benthic_layer(year)
             m.split_map(left_layer, right_layer)
             m.add_colorbar(sst_vis, label="海面溫度 (°C)", layer_name="SST")
             m.add_legend(title="棲地類別", labels=["沙地", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=['#ffffbe', '#00ced1', '#ff69b4', '#808080', '#9bcc4f'])
@@ -216,7 +216,7 @@ def NDCISplitMap(year):
             ndci_img = get_ndci_image(year)
             ndci_vis = {'min': -0.05, 'max': 0.15, 'palette': ['#0011ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000']}
             left_layer = geemap.ee_tile_layer(ndci_img, ndci_vis, f'{year} NDCI')
-            right_layer = get_benthic_layer(year) # 使用修復後的函式
+            right_layer = get_benthic_layer(year)
             m.split_map(left_layer, right_layer)
             m.add_colorbar(ndci_vis, label="NDCI (優養化)", layer_name="NDCI")
             m.add_legend(title="棲地類別", labels=["沙地", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=['#ffffbe', '#00ced1', '#ff69b4', '#808080', '#9bcc4f'])
@@ -267,7 +267,6 @@ def StarfishHabitatMap():
             classifier = ee.Classifier.smileRandomForest(30).train(training, 'benthic', ['B2','B3','B4','B8'])
             classified = s2.classify(classifier)
 
-            # 硬珊瑚(3) 與 軟珊瑚(4)
             coral_mask = classified.eq(3).Or(classified.eq(4))
             zone_coral = classified.updateMask(coral_mask).clipToCollection(outbreak_fc)
             coral_vis = {'min': 0, 'max': 6, 'palette': ['000000', '#ffffbe', '#e0d05e', '#00ced1', '#ff69b4', '#808080', '#9bcc4f']}
@@ -358,16 +357,25 @@ def Page():
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     NDCIChart()
 
-        # --- 3. 棘冠海星區塊 ---
+        # --- 3. 棘冠海星區塊 (版面調整：上圖下表) ---
         with solara.Card("3. 棘冠海星警戒區 & 珊瑚群聚結構"):
-            solara.Markdown("左圖：海星警戒區內，**硬珊瑚 (藍綠)** 與 **軟珊瑚 (粉紅)** 的分佈現況。右圖：各警戒區的歷年面積趨勢。")
-            with solara.Row(gap="30px", style={"flex-wrap": "wrap-reverse"}):
+            solara.Markdown("透過 AI 辨識警戒區內的**硬珊瑚 (藍綠)** 與 **軟珊瑚 (粉紅)** 分佈，並追蹤歷年面積消長。")
+            
+            # 上半部：地圖 + 說明
+            with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "3", "min-width": "500px"}):
                     StarfishHabitatMap()
-                with solara.Column(style={"flex": "2", "min-width": "400px"}):
-                    IslandTrendChart()
-                    with solara.Card(style={"background-color": "#f8f9fa", "margin-top": "10px"}):
-                         solara.Markdown("**棘冠海星威脅**: 若硬珊瑚持續減少，軟珊瑚可能會趁機佔領棲地 (相變)，導致礁體結構改變。")
+                
+                with solara.Column(style={"flex": "1", "min-width": "300px"}):
+                    with solara.Card(style={"background-color": "#f8f9fa"}):
+                        solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg", width="100%")
+                        solara.Markdown("**棘冠海星 (Acanthaster planci)**\n\n專吃造礁珊瑚。若無天敵控制，將導致硬珊瑚大量死亡，棲地可能被軟珊瑚取代。")
+                    with solara.Details(summary="爆發原因？"):
+                        solara.Markdown("1. 營養鹽增加 (幼體食物)\n2. 天敵減少 (大法螺遭捕撈)\n3. 氣候變遷")
+
+            # 下半部：折線圖 (獨立一行，避免被切到)
+            solara.Markdown("<br>")
+            IslandTrendChart()
 
         # --- 4. 統計分析 ---
         solara.Markdown("<br>")
