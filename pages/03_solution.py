@@ -15,8 +15,29 @@ from google.oauth2.service_account import Credentials
 # ==========================================
 coral_display_type = solara.reactive("硬珊瑚")
 
+
 # ==========================================
-# 2. 頁面組件
+# 2. 頁面組件:珊瑚
+# ==========================================
+#這裡要放照片-珊瑚礁
+coral_data = {
+    "2019 健康珊瑚礁": {
+        "img": "https://huggingface.co/jarita094/starfish-assets/resolve/main/before_cots.jpg",
+        "desc": "2019 健康珊瑚礁"
+    },
+    "2021 死亡珊瑚礁": {
+        "img": "https://huggingface.co/jarita094/starfish-assets/resolve/main/after_restoration.jpg",
+        "desc": "2021 死亡珊瑚礁(藻類附著)"
+    }
+}
+
+# ==========================================
+# 3. 頁面組件:垃圾
+# ==========================================
+url="https://iocean.oca.gov.tw/oca_oceanconservation/public/Marine_Litter_v2.aspx"
+
+# ==========================================
+# 3. 頁面組件
 # ==========================================
 
 @solara.component
@@ -32,44 +53,62 @@ def Page():
         solara.v.Divider(style_="margin-bottom: 20px") 
 
         # --- 1. 珊瑚區塊 (清除海星、復育) ---
-        with solara.Card("🛡️ 行動一：珊瑚守護與復育 (清星行動、珊瑚復育)"):
+        with solara.Card("🪸 珊瑚礁現況"):
             with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
-                # 左側：珊瑚現況說明
                 with solara.Column(style={"flex": "1", "min-width": "450px"}):
-                    solara.Markdown("#### 🪸 珊瑚礁現況")
+                    solara.Markdown("#### 🌊 影像對照")
+            # 使用迴圈自動生成分頁，減少重複代碼
+                    with solara.lab.Tabs():
+                            for label, info in coral_data.items():
+                                with solara.lab.Tab(label):
+                                    solara.Image(info["img"], width="100%", style={"border-radius": "10px"})
+                                    solara.Markdown(f"**狀態：** {info['desc']}")
+        
+
                     solara.Markdown("澎湖海域珊瑚礁因氣候變遷、海洋酸化與人為干擾，近年來呈現衰退趨勢。")
                     solara.Markdown("目前主要以硬珊瑚為主，軟珊瑚比例較低。")
+       
 
                 # 右側：清星行動說明
-                with solara.Column(style={"flex": "1", "min-width": "450px", "background-color": "#f0f7ff", "padding": "20px", "border-radius": "10px"}):
-                    solara.Markdown("#### ⚔️ 棘冠海星(COTS)人工清除對策")
+                # --- 2. 棘冠海星) ---
+        with solara.Card("⭐ 行動一：⚔️ 棘冠海星(COTS)人工清除對策"):
+            with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
+                with solara.Column(style={"flex": "1", "min-width": "450px"}):
                     with solara.Column():
-                        solara.Markdown("##### **A. 物理移除：人工夾取**")
-                        solara.Markdown("* 適用於小規模爆發或初探期，需由專業潛水員使用長夾將海星移入網袋帶回岸上處理。")
-                        
+                        solara.Markdown("##### **A. 物理移除 : 人工夾取**")
+                        solara.Markdown("* 臺灣因成本考量、技術上限制，需由專業潛水員使用長夾將海星移入網袋帶回岸上處理，但效率低且人力消耗大。")
+                        #這裡要放照片-夾海星
+                        solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/manual_removal.jpg", width="100%", style={"border-radius": "10px"})
                         solara.Markdown("##### **B. 生物化學：醋酸注射法**")
-                        solara.Markdown("* **優點：** 效率高、不需帶回岸上、不會引發海星斷肢再生。\n* **方法：** 使用注射槍將食用醋注入海星體內，其殘骸會自然分解回歸生態鏈。")
-                    
+                        solara.Markdown("* **優點：** 效率高、不需帶回岸上、不會引發海星斷肢再生。\n* **方法：** 使用注射槍將15%醋酸注入海星體內，其殘骸會自然分解回歸生態鏈。")
+                        #這裡要放照片-注射海星
+                        solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/chemical_removal.jpg", width="100%", style={"border-radius": "10px"})
                     solara.Markdown("#### 🌿 珊瑚復育技術")
                     solara.Markdown("* **珊瑚種植：** 採集天然殘枝，於陸域養殖中心培育後，再利用不鏽鋼架或生態磚進行海域移植復育。")
 
         # --- 2. 海草床復育區塊 ---
-        with solara.Card("🌱 行動二：海草床復育 (Seagrass Restoration)"):
+        with solara.Card("🪸 行動二：珊瑚復育 "):
             with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "1", "min-width": "450px"}):
-                    solara.Markdown("#### 🛰️ 海草床")
-                    
-                    solara.Markdown("#### 🌊 海草床的重要性")
+                    solara.Markdown("#### 海洋花園植栽計畫")
                     solara.Markdown("""
-                    海草床是海洋的「藍碳」英雄，能有效固碳、淨化水質並提供幼魚棲息空間。
-                    * **復育行動：** 澎湖目前於內海進行「海草苗移植」，透過人工固定工法，協助海草在沙質地紮根。
-                    * **監測指標：** 透過衛星影像監測海草床覆蓋率之年度變遷。
+                   澎湖縣政府與水產種苗場推動的珊瑚復育計畫，
+                   在鎖港杭灣打造人工珊瑚礁生態系，利用軸孔珊瑚等進行無性繁殖與移植，形成水下「花園」，復育豐富的海洋生物，同時結合海洋教育和在地潛水業者，發展生態旅遊
                     """)
+                    #這裡要放照片-種珊瑚
+                    solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/coral_planting.jpg", width="100%", style={"border-radius": "10px"})
 
         # --- 3. 海洋廢棄物清理區塊 ---
-        with solara.Card("🗑️ 行動三：海洋廢棄物清理 (漁網、廢棄物監測)"):
-            solara.Markdown("#### 🕸️ 鬼網 (Ghost Nets) 清除計畫")
-            solara.Markdown("廢棄漁網（鬼網）是珊瑚礁的沈默殺手，會覆蓋珊瑚導致其死亡，並纏繞海龜等生物。")
+        with solara.Card("🗑️ 行動三：海洋廢棄物清理 "):
+            solara.Markdown("#### 海洋廢棄物統計資訊:" + url)
+            #這裡要放照片-海洋垃圾圖表_來不及做
+            solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/coral_planting.jpg", width="100%", style={"border-radius": "10px"})
+            solara.Markdown("#### 海洋廢棄物治理計畫")
+            solara.Markdown("除了因季風帶來的海洋垃圾問題之外，過度的捕撈，廢棄漁網會覆蓋珊瑚導致其死亡，並纏繞海龜等生物。")
+            solara.Markdown("相關報導")
+            #這裡要放照片
+            solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/coral_planting.jpg", width="100%", style={"border-radius": "10px"})
+            solara.Markdown("* https://www.greenpeace.org/taiwan/press/32491/%E7%B6%A0%E8%89%B2%E5%92%8C%E5%B9%B3%E6%96%BC%E6%BE%8E%E6%B9%96%E6%B5%B7%E5%9F%9F%E6%B8%85%E5%87%BA%E7%B4%84-400-%E5%85%AC%E6%96%A4%E5%BB%A2%E7%B6%B2-%E4%BF%9D%E8%AD%B7%E5%8D%80%E6%B5%B7%E6%B4%8B/")
             
         
         # --- 頁尾 ---
