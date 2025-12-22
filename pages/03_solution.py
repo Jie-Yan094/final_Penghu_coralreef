@@ -76,8 +76,7 @@ def Page():
                     solara.Markdown("##### **A. 物理移除 : 人工夾取**")
                     solara.Markdown("* 臺灣因成本考量、技術上限制，需由專業潛水員使用長夾將海星移入網袋帶回岸上處理，但效率低且人力消耗大。")
                     # 這裡要放照片-夾海星
-solara.Image("https://huggingface.co/spaces/jarita094/ThecoralreefsinPenghuwillthrive/resolve/main/Clamp%20starfish.jpg", width="100%")
-                    
+                    solara.Image("https://huggingface.co/spaces/jarita094/ThecoralreefsinPenghuwillthrive/resolve/main/Clamp%20starfish.jpg", width="100%")                
                     solara.Markdown("##### **B. 生物化學：醋酸注射法**")
                     solara.Markdown("* **優點：** 效率高、不需帶回岸上、不會引發海星斷肢再生。\n* **方法：** 使用注射槍將15%醋酸注入海星體內，其殘骸會自然分解回歸生態鏈。")
                     # 這裡要放照片-注射海星
