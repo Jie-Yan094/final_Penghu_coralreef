@@ -8,14 +8,14 @@ import solara.lab
 base_url = "https://huggingface.co/spaces/jarita094/ThecoralreefsinPenghuwillthrive/resolve/main/"
 
 # 定義圖片網址 (自動處理檔名中的空白)
-img_healthy_2019 = f"{base_url}2019%20healthy%20coral.jpg"
-img_dead_2021    = f"{base_url}2021%20dead%20coral.jpg"
-img_clamp        = f"{base_url}Clamp%20starfish.jpg"
-img_plant        = f"{base_url}Plant%20coral.png"
-img_chart        = f"{base_url}Ocean%20debris%20chart.png"
-img_net          = f"{base_url}fishing%20net.jpg"
+img_healthy_2019 = "2019 healthy coral.jpg"
+img_dead_2021    = "2021 dead coral.jpg"
+img_clamp        = "Clamp starfish.jpg"
+img_plant        = "Plant coral.png"
+img_chart        = "Ocean debris chart.png"
+img_net          = "fishing net.jpg"
 
-# 尚未上傳的圖片暫時用海星代替，或者你可以換成其他的
+# 尚未上傳的圖片 (這張因為不在你的檔案列表，所以維持用網址)
 img_placeholder  = "https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg"
 
 
