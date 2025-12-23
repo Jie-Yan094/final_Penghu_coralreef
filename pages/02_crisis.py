@@ -6,7 +6,6 @@ import json
 import tempfile
 import pandas as pd
 import numpy as np
-import numpy as np
 import plotly.graph_objects as go
 from google.oauth2.service_account import Credentials
 
@@ -14,28 +13,8 @@ from google.oauth2.service_account import Credentials
 # 0. GEE 驗證與初始化
 # ==========================================
 ee_initialized = False
-ee_initialized = False
 try:
     key_content = os.environ.get('EARTHENGINE_TOKEN')
-    if key_content and key_content.strip():
-        try:
-            clean_content = key_content.replace("'", '"')
-            service_account_info = json.loads(clean_content)
-            my_project_id = service_account_info.get("project_id")
-            creds = Credentials.from_service_account_info(
-                service_account_info,
-                scopes=['https://www.googleapis.com/auth/earthengine']
-            )
-            ee.Initialize(credentials=creds, project=my_project_id)
-            print(f"✅ 雲端環境：GEE 驗證成功！(Project: {my_project_id})")
-            ee_initialized = True
-        except Exception as e:
-            print(f"⚠️ Token 解析失敗: {e}，嘗試使用本機驗證...")
-            try:
-                ee.Initialize()
-                ee_initialized = True
-            except:
-                pass
     if key_content and key_content.strip():
         try:
             clean_content = key_content.replace("'", '"')
@@ -62,14 +41,7 @@ try:
             ee_initialized = True
         except:
             pass
-        print("⚠️ 無 Token，嘗試本機驗證...")
-        try:
-            ee.Initialize()
-            ee_initialized = True
-        except:
-            pass
 except Exception as e:
-    print(f"⚠️ GEE 初始化遭遇問題 ({e})")
     print(f"⚠️ GEE 初始化遭遇問題 ({e})")
 
 # ==========================================
@@ -85,7 +57,6 @@ ndci_year = solara.reactive(2025)
 selected_island = solara.reactive("七美嶼")
 
 # --- 全區總表 (環境因子) ---
-# --- 全區總表 (環境因子) ---
 years_list = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
 sst_values = [28.16, 27.75, 28.62, 28.37, 28.29, 28.02, 28.95, 28.43]
 # 全區真實數據
@@ -96,7 +67,6 @@ df_mixed = pd.DataFrame({
     'Year': years_list, 'SST_Summer': sst_values,
     'Hard_Coral': hard_coral_values, 'Total_Coral': total_coral_values
 })
-ndci_data = {'Year': years_list, 'NDCI_Mean': [-0.063422, 0.041270, 0.041549, 0.041954, 0.093461, 0.107500, 0.108534, 0.066040]}
 ndci_data = {'Year': years_list, 'NDCI_Mean': [-0.063422, 0.041270, 0.041549, 0.041954, 0.093461, 0.107500, 0.108534, 0.066040]}
 df_ndci = pd.DataFrame(ndci_data)
 
@@ -129,7 +99,6 @@ island_names = list(island_data.keys())
 
 # ==========================================
 # 2. 共用函式 (地圖即時分類邏輯)
-# 2. 共用函式 (地圖即時分類邏輯)
 # ==========================================
 def save_map_to_html(m):
     try:
@@ -138,8 +107,6 @@ def save_map_to_html(m):
         m.to_html(filename=temp_path)
         with open(temp_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
         if os.path.exists(temp_path):
             os.remove(temp_path)
         return html_content
@@ -200,11 +167,8 @@ def get_benthic_layer(year):
 
 # ==========================================
 # 3. 組件：SST vs Benthic Split Map
-# 3. 組件：SST vs Benthic Split Map
 # ==========================================
 @solara.component
-def SSTSplitMap(year, period_type):
-    def get_map_html():
 def SSTSplitMap(year, period_type):
     def get_map_html():
         m = geemap.Map(center=ROI_CENTER, zoom=10)
@@ -234,7 +198,6 @@ def SSTSplitMap(year, period_type):
         return save_map_to_html(m)
 
     map_html = solara.use_memo(get_map_html, dependencies=[year, period_type])
-    map_html = solara.use_memo(get_map_html, dependencies=[year, period_type])
     return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "500px", "style": "border:none;"})
 
 @solara.component
@@ -249,30 +212,15 @@ def SSTCoralChart():
         fig.add_trace(go.Bar(x=df_mixed['Year'], y=current_data, name=f'{label}面積', marker_color=color, yaxis='y2'))
         fig.add_trace(go.Scatter(x=df_mixed['Year'], y=df_mixed['SST_Summer'], name='夏季均溫', mode='lines+markers', line=dict(color='#e74c3c', width=4)))
         fig.update_layout(title=f'環境壓力 vs {label}面積趨勢', xaxis=dict(title='年份'), yaxis=dict(title='海溫 (°C)', side='left'), yaxis2=dict(title='面積', overlaying='y', side='right', showgrid=False), legend=dict(orientation="h", y=-0.2), height=400, margin=dict(l=40, r=40, t=40, b=40))
-        fig.add_trace(go.Bar(x=df_mixed['Year'], y=current_data, name=f'{label}面積', marker_color=color, yaxis='y2'))
-        fig.add_trace(go.Scatter(x=df_mixed['Year'], y=df_mixed['SST_Summer'], name='夏季均溫', mode='lines+markers', line=dict(color='#e74c3c', width=4)))
-        fig.update_layout(title=f'環境壓力 vs {label}面積趨勢', xaxis=dict(title='年份'), yaxis=dict(title='海溫 (°C)', side='left'), yaxis2=dict(title='面積', overlaying='y', side='right', showgrid=False), legend=dict(orientation="h", y=-0.2), height=400, margin=dict(l=40, r=40, t=40, b=40))
         solara.FigurePlotly(fig)
 
 # ==========================================
-# 4. 組件：NDCI vs Benthic Split Map
 # 4. 組件：NDCI vs Benthic Split Map
 # ==========================================
 @solara.component
 def NDCISplitMap(year):
     def get_map_html():
-def NDCISplitMap(year):
-    def get_map_html():
         m = geemap.Map(center=ROI_CENTER, zoom=11)
-        if not ee_initialized: return save_map_to_html(m)
-
-        def get_ndci_image(y):
-            start, end = f'{y}-05-01', f'{y}-09-30'
-            col = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') if y >= 2019 else ee.ImageCollection('COPERNICUS/S2_HARMONIZED')
-            def mask(img): 
-                return img.updateMask(img.select('SCL').eq(6)).divide(10000) if y >= 2019 else img.divide(10000)
-            s2 = col.filterBounds(ROI_RECT).filterDate(start, end).filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)).map(mask)
-            return s2.median().clip(ROI_RECT).normalizedDifference(['B5', 'B4']).rename('NDCI')
         if not ee_initialized: return save_map_to_html(m)
 
         def get_ndci_image(y):
@@ -294,10 +242,8 @@ def NDCISplitMap(year):
             m.add_legend(title="棲地類別", labels=["沙地", "沙/藻", "硬珊瑚", "岩石", "碎石", "海草"], colors=['#ffffbe', '#e0d05e', '#00ced1', '#8B4513', '#808080', '#9bcc4f'])
         except Exception:
             pass
-            pass
         return save_map_to_html(m)
 
-    map_html = solara.use_memo(get_map_html, dependencies=[year])
     map_html = solara.use_memo(get_map_html, dependencies=[year])
     return solara.HTML(tag="iframe", attributes={"srcDoc": map_html, "width": "100%", "height": "500px", "style": "border:none;"})
 
@@ -312,24 +258,16 @@ def NDCIChart():
         fig.add_trace(go.Bar(x=df_ndci['Year'], y=current_data, name=f'{label}面積', marker_color=color, yaxis='y2'))
         fig.add_trace(go.Scatter(x=df_ndci['Year'], y=df_ndci['NDCI_Mean'], name='NDCI', mode='lines+markers', line=dict(color='#00CC96', width=3)))
         fig.update_layout(title=f'優養化指標 (NDCI) vs {label}面積', xaxis=dict(title='年份'), yaxis=dict(title='NDCI', side='left'), yaxis2=dict(title='面積', overlaying='y', side='right', showgrid=False), legend=dict(orientation="h", y=-0.2), height=450, margin=dict(l=40, r=40, t=40, b=40))
-        fig.add_trace(go.Bar(x=df_ndci['Year'], y=current_data, name=f'{label}面積', marker_color=color, yaxis='y2'))
-        fig.add_trace(go.Scatter(x=df_ndci['Year'], y=df_ndci['NDCI_Mean'], name='NDCI', mode='lines+markers', line=dict(color='#00CC96', width=3)))
-        fig.update_layout(title=f'優養化指標 (NDCI) vs {label}面積', xaxis=dict(title='年份'), yaxis=dict(title='NDCI', side='left'), yaxis2=dict(title='面積', overlaying='y', side='right', showgrid=False), legend=dict(orientation="h", y=-0.2), height=450, margin=dict(l=40, r=40, t=40, b=40))
         solara.FigurePlotly(fig)
 
-
 # ==========================================
-# 5. 組件：棘冠海星地圖 (生態疊圖)
 # 5. 組件：棘冠海星地圖 (生態疊圖)
 # ==========================================
 @solara.component
 def StarfishHabitatMap():
-def StarfishHabitatMap():
     def get_starfish_map_html():
         m = geemap.Map(center=[23.25, 119.55], zoom=11)
         m.add_basemap("HYBRID")
-        if not ee_initialized: return save_map_to_html(m)
-
         if not ee_initialized: return save_map_to_html(m)
 
         zones = [
@@ -398,7 +336,6 @@ def IslandTrendChart():
 
 # ==========================================
 # 6. 組件：相關係數分析
-# 6. 組件：相關係數分析
 # ==========================================
 @solara.component
 def CorrelationAnalysis():
@@ -406,8 +343,6 @@ def CorrelationAnalysis():
         with solara.Row(gap="10px", style={"flex-wrap": "wrap", "justify-content": "center"}):
             def create_corr_heatmap(df, title, color_icon):
                 corr = df.corr(method='pearson')
-                fig = go.Figure(data=go.Heatmap(z=corr.values, x=corr.columns, y=corr.index, colorscale='RdBu_r', zmin=-1, zmax=1, text=corr.values.round(2), texttemplate="%{text}", showscale=False))
-                fig.update_layout(title=f"{color_icon} {title}", height=280, width=300, margin=dict(l=40, r=10, t=40, b=40))
                 fig = go.Figure(data=go.Heatmap(z=corr.values, x=corr.columns, y=corr.index, colorscale='RdBu_r', zmin=-1, zmax=1, text=corr.values.round(2), texttemplate="%{text}", showscale=False))
                 fig.update_layout(title=f"{color_icon} {title}", height=280, width=300, margin=dict(l=40, r=10, t=40, b=40))
                 return fig
@@ -437,15 +372,11 @@ def Page():
         # --- 1. 海溫區塊 ---
         with solara.Card("1. 海溫異常 (SST) - 環境因子 vs 生態回應"):
             solara.Markdown("左圖：海面溫度 (SST) | 右圖：**該年** 棲地分類。")
-        with solara.Card("1. 海溫異常 (SST) - 環境因子 vs 生態回應"):
-            solara.Markdown("左圖：海面溫度 (SST) | 右圖：**該年** 棲地分類。")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     with solara.Row():
                         solara.SliderInt(label="選擇年份", value=sst_year, min=2018, max=2025)
-                        solara.SliderInt(label="選擇年份", value=sst_year, min=2018, max=2025)
                         solara.ToggleButtonsSingle(value=sst_type, values=["全年平均", "夏季均溫"])
-                    SSTSplitMap(sst_year.value, sst_type.value)
                     SSTSplitMap(sst_year.value, sst_type.value)
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
                     SSTCoralChart()
@@ -453,12 +384,8 @@ def Page():
         # --- 2. 優養化區塊 ---
         with solara.Card("2. 海洋優養化 (NDCI) - 環境因子 vs 生態回應"):
             solara.Markdown("左圖：優養化指數 (NDCI) | 右圖：**該年** 棲地分類。")
-        with solara.Card("2. 海洋優養化 (NDCI) - 環境因子 vs 生態回應"):
-            solara.Markdown("左圖：優養化指數 (NDCI) | 右圖：**該年** 棲地分類。")
             with solara.Row(gap="30px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
-                    solara.SliderInt(label="選擇年份", value=ndci_year, min=2018, max=2025)
-                    NDCISplitMap(ndci_year.value)
                     solara.SliderInt(label="選擇年份", value=ndci_year, min=2018, max=2025)
                     NDCISplitMap(ndci_year.value)
                 with solara.Column(style={"flex": "1", "min-width": "500px"}):
@@ -477,17 +404,7 @@ def Page():
                         solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg", width="100%")
                         solara.Markdown("**棘冠海星**: 專吃造礁珊瑚。若無天敵控制，將導致硬珊瑚大量死亡。")
                     with solara.Details(summary="爆發原因？"):
-                    StarfishHabitatMap()
-                
-                with solara.Column(style={"flex": "1", "min-width": "300px"}):
-                    with solara.Card(style={"background-color": "#f8f9fa"}):
-                        solara.Image("https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg", width="100%")
-                        solara.Markdown("**棘冠海星**: 專吃造礁珊瑚。若無天敵控制，將導致硬珊瑚大量死亡。")
-                    with solara.Details(summary="爆發原因？"):
                         solara.Markdown("1. 營養鹽增加\n2. 天敵減少\n3. 氣候變遷")
-
-            solara.Markdown("<br>")
-            IslandTrendChart()
 
             solara.Markdown("<br>")
             IslandTrendChart()
@@ -499,8 +416,6 @@ def Page():
         # --- 5. 人類活動 ---
         with solara.Card("5. 人類活動影響"):
             solara.Markdown("### 海廢熱點與廢棄漁網分佈圖")
-            solara.HTML(tag="iframe", attributes={"src": "https://iocean.oca.gov.tw/iOceanMap/map.aspx", "width": "100%", "height": "600px", "style": "border: none; border-radius: 8px;", "title": "海洋保育網地圖"})
-            solara.Markdown("> **資料來源：** [海洋保育網 (iOcean)](https://iocean.oca.gov.tw/iOceanMap/map.aspx)")
             solara.HTML(tag="iframe", attributes={"src": "https://iocean.oca.gov.tw/iOceanMap/map.aspx", "width": "100%", "height": "600px", "style": "border: none; border-radius: 8px;", "title": "海洋保育網地圖"})
             solara.Markdown("> **資料來源：** [海洋保育網 (iOcean)](https://iocean.oca.gov.tw/iOceanMap/map.aspx)")
 
