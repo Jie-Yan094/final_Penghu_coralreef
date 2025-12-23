@@ -136,7 +136,7 @@ def get_benthic_layer(year):
     
     # ACA Remap (Class 15 -> 3 "Coral/Algae")
     label_img = ee.Image('ACA/reef_habitat/v2_0').clip(ROI_RECT).remap(
-        [0, 11, 18, 15, 13, 12, 14], 
+        [0, 11, 12, 13, 14, 15, 18], 
         [0,  1,  2,  3,  4,  5,  6], 
         0
     ).rename('benthic').toByte()
@@ -155,7 +155,17 @@ def get_benthic_layer(year):
     classified = target_img.updateMask(target_mask).classify(classifier).focal_mode(radius=30, kernelType='circle', units='meters')
     
     # 顏色：3號 (Coral/Algae) 為藍綠色
-    vis = {'min': 0, 'max': 6, 'palette': ['000000', '#ffffbe', '#9bcc4f', '#00ced1', '#8B4513', '#808080', '#668438']}
+    vis = {'min': 0, 'max': 6, 
+           'palette' : [
+                '000000', # 0
+                '#ffffbe', 
+                '#e0d05e', 
+                '#b19c3a', 
+                '#668438',
+                '#ff6161', 
+                '#9bcc4f'  
+            ]
+           }
     return geemap.ee_tile_layer(classified, vis, f'{year} 棲地分類')
 
 
@@ -187,8 +197,8 @@ def SSTSplitMap(year, period_type):
             m.add_colorbar(sst_vis, label="海面溫度 (°C)", layer_name="SST")
             # [修正] 正名為「珊瑚/藻類」
             m.add_legend(title="棲地類別", 
-                         labels=["沙地", "微藻墊", "珊瑚/藻類", "岩石", "碎石", "海草"], 
-                         colors=['#ffffbe', '#9bcc4f', '#00ced1', '#8B4513', '#808080', '#668438'])
+                         labels=["沙地", "碎石", "岩石", "海草床", "珊瑚/藻類", "微藻墊"], 
+                         colors=['#ffffbe', '#e0d05e', '#b19c3a', '#668438', '#ff6161', '#9bcc4f'])
         except Exception as e:
             return f"<div>SST 地圖載入失敗: {e}</div>"
         return save_map_to_html(m)
@@ -231,7 +241,7 @@ def NDCISplitMap(year):
             m.split_map(left_layer, right_layer)
             m.add_colorbar(ndci_vis, label="NDCI (優養化)", layer_name="NDCI")
             # [修正] 正名為「珊瑚/藻類」
-            m.add_legend(title="棲地類別", labels=["沙地", "微藻墊", "珊瑚/藻類", "岩石", "碎石", "海草"], colors=['#ffffbe', '#9bcc4f', '#00ced1', '#8B4513', '#808080', '#668438'])
+            m.add_legend(title="棲地類別", labels=["沙地", "碎石", "岩石", "海草床", "珊瑚/藻類", "微藻墊"], colors=['#ffffbe', '#e0d05e', '#b19c3a', '#668438', '#ff6161', '#9bcc4f'])
         except Exception:
             pass
         return save_map_to_html(m)
@@ -272,7 +282,7 @@ def StarfishHabitatMap():
             s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(ROI_RECT).filterDate('2024-05-01', '2024-09-30').filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10)).median().clip(ROI_RECT)
             
             label_img = ee.Image('ACA/reef_habitat/v2_0').clip(ROI_RECT).remap(
-                [0, 11, 18, 15, 13, 12, 14], 
+                [0, 11, 12, 13, 14, 15, 18], 
                 [0,  1,  2,  3,  4,  5,  6], 
                 0
             ).rename('benthic')
@@ -281,15 +291,15 @@ def StarfishHabitatMap():
             classifier = ee.Classifier.smileRandomForest(30).train(training, 'benthic', ['B2','B3','B4','B8'])
             classified = s2.classify(classifier)
 
-            # 只顯示「珊瑚/藻類 (Class 3)」
-            coral_mask = classified.eq(3)
+            # 只顯示「珊瑚/藻類 (Class 5)」
+            coral_mask = classified.eq(5)
             zone_coral = classified.updateMask(coral_mask).clipToCollection(outbreak_fc)
-            coral_vis = {'palette': ['00ced1']} 
+            coral_vis = {'palette': ['#ff6161']} 
 
             m.addLayer(outbreak_fc.style(color='red', width=3, fillColor='00000000'), {}, "海星爆發警戒區")
             m.addLayer(zone_coral, coral_vis, "警戒區內珊瑚/藻類")
             # [修正] 正名為「珊瑚/藻類」
-            m.add_legend(title="圖層說明", labels=["海星警戒區", "珊瑚/藻類 (食物來源)"], colors=["#FF0000", "#00CED1"])
+            m.add_legend(title="圖層說明", labels=["海星警戒區", "珊瑚/藻類 (食物來源)"], colors=["#FF0000", "#FF6161"])
 
         except Exception as e:
             m.addLayer(outbreak_fc.style(color='red', width=3, fillColor='00000000'), {}, "警戒區")
@@ -312,7 +322,7 @@ def IslandTrendChart():
         fig.add_trace(go.Scatter(
             x=df['Year'], y=df['Hard_Coral'], # 欄位名稱保持 Hard_Coral 方便讀取，但 Label 改掉
             name='珊瑚/藻類', mode='lines+markers', 
-            line=dict(color='#00ced1', width=4), marker=dict(size=8)
+            line=dict(color='#ff6161', width=4), marker=dict(size=8)
         ))
         
         fig.update_layout(
