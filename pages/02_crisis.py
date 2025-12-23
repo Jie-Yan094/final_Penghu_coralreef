@@ -60,7 +60,7 @@ selected_island = solara.reactive("七美嶼")
 years_list = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
 sst_values = [28.16, 27.75, 28.62, 28.37, 28.29, 28.02, 28.95, 28.43]
 # 這裡對應 ACA Class 15 (Coral/Algae)
-coral_algae_values = [1584.55, 382.45, 76.97, 197.21, 95.55, 224.21, 239.71, 1264.49]
+coral_algae_values = [6146.81,7185.07 , 741.91, 793.3,1043.67, 2006.07, 2367.72, 9170.3]
 
 df_mixed = pd.DataFrame({
     'Year': years_list, 'SST_Summer': sst_values,
