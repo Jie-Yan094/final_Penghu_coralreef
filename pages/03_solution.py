@@ -37,7 +37,7 @@ img_clamp        = get_image("Clamp starfish.jpg")
 img_plant        = get_image("Plant coral.png")
 img_chart        = get_image("Ocean debris chart.png")
 img_net          = get_image("fishing net.jpg")
-img_dead         = get_image("dead coral .jpg")
+img_dead         = get_image("dead starfish.jpg")
 
 # 備用圖 (這張還是用網址，因為它不在你的檔案列表裡)
 img_placeholder  = "https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg"
