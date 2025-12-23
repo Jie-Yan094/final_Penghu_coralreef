@@ -45,30 +45,31 @@ except Exception as e:
     print(f"⚠️ GEE 初始化遭遇問題 ({e})")
 
 # ==========================================
-# 1. 資料準備
+# 1. 資料準備 (已正名)
 # ==========================================
 ROI_RECT = ee.Geometry.Rectangle([119.2741, 23.1695, 119.8114, 23.8792])
 ROI_CENTER = [23.5, 119.5]
 
+# 數據標籤已更新為 ACA 官方定義
 raw_data = {
     "Year": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
     "沙地 (Sand)": [927.48, 253.14, 4343.63, 1471.55, 541.53, 919.71, 322.23, 677.92, 260.38, 5485.41],
-    "沙/藻 (Sand/Algae)": [1520.33, 81.28, 4533.96, 1507.81, 134.95, 334.42, 209.84, 322.38, 280.27, 1794.93],
-    "硬珊瑚 (Hard Coral)": [342.08, 92.92, 1584.55, 382.45, 76.97, 197.21, 95.55, 224.21, 239.71, 1264.49],
-    "軟珊瑚 (Soft Coral)": [32272.96, 10536.69, 27021.90, 39909.48, 13074.81, 22751.79, 15645.10, 25062.07, 42610.23, 26497.39],
+    "微藻墊 (Microalgal Mats)": [1520.33, 81.28, 4533.96, 1507.81, 134.95, 334.42, 209.84, 322.38, 280.27, 1794.93],
+    "珊瑚/藻類 (Coral/Algae)": [342.08, 92.92, 1584.55, 382.45, 76.97, 197.21, 95.55, 224.21, 239.71, 1264.49],
+    "岩石 (Rock)": [32272.96, 10536.69, 27021.90, 39909.48, 13074.81, 22751.79, 15645.10, 25062.07, 42610.23, 26497.39],
     "碎石 (Rubble)": [3604.92, 300.24, 6416.81, 7185.07, 741.91, 793.30, 1043.67, 2006.07, 2367.72, 9170.30],
     "海草 (Seagrass)": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 }
 df_analysis = pd.DataFrame(raw_data)
 
-# 顏色設定
+# 顏色設定 (同步 ACA 風格)
 color_map = {
     "沙地 (Sand)": "#ffffbe",
-    "沙/藻 (Sand/Algae)": "#e0d05e",
-    "硬珊瑚 (Hard Coral)": "#00ced1", # 亮藍綠
-    "軟珊瑚 (Soft Coral)": "#ff69b4", # 亮粉紅
-    "碎石 (Rubble)": "#808080",       # 灰色
-    "海草 (Seagrass)": "#9bcc4f"
+    "微藻墊 (Microalgal Mats)": "#9bcc4f",
+    "珊瑚/藻類 (Coral/Algae)": "#00ced1", # 亮藍綠
+    "岩石 (Rock)": "#8B4513",            # 深褐
+    "碎石 (Rubble)": "#808080",          # 灰
+    "海草 (Seagrass)": "#668438"         # 深綠
 }
 
 target_year = solara.reactive(2024)
@@ -77,7 +78,7 @@ smoothing_radius = solara.reactive(30)
 selected_chart = solara.reactive("📈 折線趨勢")
 
 # ==========================================
-# 2. 地圖組件：智慧型分類邏輯 (自動切換 SR/TOA)
+# 2. 地圖組件
 # ==========================================
 def save_map_to_html(m):
     try:
@@ -102,15 +103,12 @@ def ReefHabitatMap(year, period, radius):
             return save_map_to_html(m)
 
         try:
-            # 1. 時間與資料源設定 (關鍵修正！)
+            # 1. 時間與資料源設定
             if period == "夏季平均":
                 start_date, end_date = f'{year}-06-01', f'{year}-09-30'
             else:
                 start_date, end_date = f'{year}-01-01', f'{year}-12-31'
 
-            # --- 自動切換資料源策略 ---
-            # 2019以後用 SR (Surface Reflectance)，2018以前用 TOA (Top of Atmosphere)
-            # 這能解決 2016-2018 "No bands" 的問題
             if year >= 2019:
                 s2_collection_id = "COPERNICUS/S2_SR_HARMONIZED"
                 dataset_label = "Sentinel-2 SR (大氣校正)"
@@ -118,7 +116,7 @@ def ReefHabitatMap(year, period, radius):
                 s2_collection_id = "COPERNICUS/S2_HARMONIZED"
                 dataset_label = "Sentinel-2 TOA (頂層大氣)"
 
-            # 2. 簡化的水深遮罩
+            # 2. 水深遮罩
             try:
                 depth_raw = ee.Image('projects/ee-s1243041/assets/bathymetry_0')
                 actual_band = depth_raw.bandNames().get(0)
@@ -127,23 +125,25 @@ def ReefHabitatMap(year, period, radius):
             except:
                 depth_mask = ee.Image(1).clip(ROI_RECT)
 
-            # 3. 準備訓練資料 (2018年為基準)
-            # 注意：這裡的訓練資料源 (SR或TOA) 必須跟目標年份一致，否則分類會不準
+            # 3. 準備訓練資料
             def smooth(mask, r):
-                return mask.focal_mode(radius=r, units='meters', kernelType='circle')
+                return mask.focal_mode(radius=r, kernelType='circle', units='meters')
 
-            img_train = (ee.ImageCollection(s2_collection_id) # 跟隨目標年份的資料源
+            img_train = (ee.ImageCollection(s2_collection_id)
                          .filterBounds(ROI_RECT).filterDate('2018-01-01', '2018-12-31')
-                         .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)) # 放寬雲量限制
+                         .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
                          .median().clip(ROI_RECT).select(['B2','B3','B4','B8']))
 
             mask_train = smooth(img_train.normalizedDifference(['B3', 'B8']).gt(0.1).And(depth_mask), 10)
             
+            # [關鍵修正] ACA Remap 對應表
+            # 11:沙, 18:微藻墊, 15:珊瑚/藻類, 13:岩石, 12:碎石, 14:海草
             label_img = ee.Image('ACA/reef_habitat/v2_0').clip(ROI_RECT).remap(
-                [0, 11, 12, 13, 14, 15, 18], [0, 1, 2, 3, 4, 5, 6], 0
+                [0, 11, 18, 15, 13, 12, 14], 
+                [0,  1,  2,  3,  4,  5,  6], 
+                0
             ).rename('benthic').toByte()
 
-            # 平衡參數 (速度 vs 精度)
             sample = img_train.updateMask(mask_train).addBands(label_img).stratifiedSample(
                 numPoints=1000, 
                 classBand='benthic', 
@@ -166,25 +166,26 @@ def ReefHabitatMap(year, period, radius):
             classified_raw = target_img.updateMask(target_ndwi_mask).classify(classifier)
 
             if radius > 0:
-                classified = classified_raw.focal_mode(radius=radius, units='meters', kernelType='circle')
+                classified = classified_raw.focal_mode(radius=radius, kernelType='circle', units='meters')
             else:
                 classified = classified_raw
 
-            # 5. 視覺化
+            # 5. 視覺化 (正名配色)
+            # 0:黑, 1:沙, 2:微藻墊, 3:珊瑚/藻類, 4:岩石, 5:碎石, 6:海草
             new_palette = [
-                '000000', # 0: 無數據
-                'ffffbe', # 1: 沙地
-                'e0d05e', # 2: 沙/藻
-                '00ced1', # 3: 硬珊瑚 (亮藍綠)
-                'ff69b4', # 4: 軟珊瑚 (亮粉紅)
-                '808080', # 5: 碎石 (灰色)
-                '9bcc4f'  # 6: 海草
+                '000000', # 0
+                '#ffffbe', # 1 Sand
+                '#9bcc4f', # 2 Mats
+                '#00ced1', # 3 Coral/Algae
+                '#8B4513', # 4 Rock
+                '#808080', # 5 Rubble
+                '#668438'  # 6 Seagrass
             ]
             class_vis = {'min': 0, 'max': 6, 'palette': new_palette}
             
             m.addLayer(target_img, {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}, f"{year} 衛星影像 ({dataset_label})")
             m.addLayer(classified, class_vis, f"{year} AI分類結果")
-            m.add_legend(title="棲地類別", labels=["無數據", "沙地", "沙/藻", "硬珊瑚", "軟珊瑚", "碎石", "海草"], colors=new_palette)
+            m.add_legend(title="棲地類別", labels=["無數據", "沙地", "微藻墊", "珊瑚/藻類", "岩石", "碎石", "海草"], colors=new_palette)
 
         except Exception as e:
             return f"<div style='color:red'>分類運算錯誤: {str(e)}<br>建議：請切換至其他年份試試。</div>"
