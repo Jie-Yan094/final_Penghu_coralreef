@@ -8,12 +8,12 @@ import solara.lab
 base_url = "https://huggingface.co/spaces/jarita094/ThecoralreefsinPenghuwillthrive/resolve/main/"
 
 # 檔名如果有空白，必須改成 %20，不然會破圖
-img_healthy_2019 = base_url + "2019%20healthy%20coral.jpg"
-img_dead_2021    = base_url + "2021%20dead%20coral.jpg"
-img_clamp        = base_url + "Clamp%20starfish.jpg"
-img_plant        = base_url + "Plant%20coral.png"
-img_chart        = base_url + "Ocean%20debris%20chart.png"
-img_net          = base_url + "fishing%20net.jpg"
+img_healthy_2019 = base_url + "2019 healthy coral.jpg"
+img_dead_2021    = base_url + "2021 dead coral.jpg"
+img_clamp        = base_url + "Clamp starfish.jpg"
+img_plant        = base_url + "Plant coral.png"
+img_chart        = base_url + "Ocean debris chart.png"
+img_net          = base_url + "fishing net.jpg"
 
 # 備用圖
 img_placeholder  = "https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg"

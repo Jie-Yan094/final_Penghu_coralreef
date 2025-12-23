@@ -331,7 +331,6 @@ def IslandTrendChart():
             margin=dict(l=40, r=40, t=60, b=40), height=400
         )
         solara.FigurePlotly(fig)
-        solara.Info("觀察重點：數據來自 Sentinel-2 衛星影像分類運算，反映真實棲地變遷。")
 
 # ==========================================
 # 6. 組件：相關係數分析
