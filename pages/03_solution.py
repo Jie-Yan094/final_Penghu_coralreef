@@ -37,6 +37,7 @@ img_clamp        = get_image("Clamp starfish.jpg")
 img_plant        = get_image("Plant coral.png")
 img_chart        = get_image("Ocean debris chart.png")
 img_net          = get_image("fishing net.jpg")
+img_dead         = get_image("dead coral .jpg")
 
 # 備用圖 (這張還是用網址，因為它不在你的檔案列表裡)
 img_placeholder  = "https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg"
@@ -96,7 +97,7 @@ def Page():
                     
                     solara.Markdown("##### **B. 生物化學：醋酸注射法**")
                     solara.Markdown("* **優點：** 效率高、不需帶回岸上。\n* **方法：** 使用注射槍將15%醋酸注入海星體內。")
-                    solara.Image(img_placeholder, width="100%")
+                    solara.Image(img_dead, width="100%")
                 
         # --- 3. 珊瑚復育區塊 ---
         with solara.Card("🪸 行動二：珊瑚復育 "):
