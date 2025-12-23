@@ -1,9 +1,44 @@
 import solara
 import solara.lab
+<<<<<<< HEAD
 import pathlib  # 用來讀取檔案路徑
 
 # ==========================================
 # 1. 圖片讀取小幫手 (讀取本機檔案)
+=======
+
+# ==========================================
+# 1. 設定圖片網址 (直接用雲端網址，保證讀得到)
+# ==========================================
+# 請確認這個網址是你的 Space 網址
+base_url = "https://huggingface.co/spaces/jarita094/ThecoralreefsinPenghuwillthrive/resolve/main/"
+
+# 檔名如果有空白，必須改成 %20，不然會破圖
+img_healthy_2019 = base_url + "2019 healthy coral.jpg"
+img_dead_2021    = base_url + "2021 dead coral.jpg"
+img_clamp        = base_url + "Clamp starfish.jpg"
+img_plant        = base_url + "Plant coral.png"
+img_chart        = base_url + "Ocean debris chart.png"
+img_net          = base_url + "fishing net.jpg"
+
+# 備用圖
+img_placeholder  = "https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg"
+
+# 定義圖片網址 (自動處理檔名中的空白)
+img_healthy_2019 = "2019 healthy coral.jpg"
+img_dead_2021    = "2021 dead coral.jpg"
+img_clamp        = "Clamp starfish.jpg"
+img_plant        = "Plant coral.png"
+img_chart        = "Ocean debris chart.png"
+img_net          = "fishing net.jpg"
+
+# 尚未上傳的圖片 (這張因為不在你的檔案列表，所以維持用網址)
+img_placeholder  = "https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg"
+
+
+# ==========================================
+# 2. 資料設定
+>>>>>>> bb1e242da00e717f4b7253746d91b3702b467f65
 # ==========================================
 def get_image(filename):
     """
@@ -77,6 +112,10 @@ def Page():
                 with solara.Column(style={"flex": "1", "min-width": "450px"}):
                     solara.Markdown("#### 🌊 影像對照")
                     
+<<<<<<< HEAD
+=======
+                    # 使用 Tabs 切換健康與死亡珊瑚
+>>>>>>> bb1e242da00e717f4b7253746d91b3702b467f65
                     with solara.lab.Tabs():
                         for label, info in coral_data.items():
                             with solara.lab.Tab(label):
@@ -90,31 +129,75 @@ def Page():
         with solara.Card("⭐ 行動一：⚔️ 棘冠海星(COTS)人工清除對策"):
             with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "1", "min-width": "450px"}):
+<<<<<<< HEAD
                     
                     solara.Markdown("##### **A. 物理移除 : 人工夾取**")
                     solara.Markdown("* 需由專業潛水員使用長夾將海星移入網袋帶回岸上處理。")
                     solara.Image(img_clamp, width="100%")                
+=======
+>>>>>>> bb1e242da00e717f4b7253746d91b3702b467f65
                     
+                    # A. 物理移除
+                    solara.Markdown("##### **A. 物理移除 : 人工夾取**")
+                    solara.Markdown("* 臺灣因成本考量、技術上限制，需由專業潛水員使用長夾將海星移入網袋帶回岸上處理。")
+                    # 放照片：夾海星
+                    solara.Image(img_clamp, width="100%")                
+                    
+                    # B. 生物化學
                     solara.Markdown("##### **B. 生物化學：醋酸注射法**")
+<<<<<<< HEAD
                     solara.Markdown("* **優點：** 效率高、不需帶回岸上。\n* **方法：** 使用注射槍將15%醋酸注入海星體內。")
                     solara.Image(img_dead, width="100%")
                 
         # --- 3. 珊瑚復育區塊 ---
+=======
+                    solara.Markdown("* **優點：** 效率高、不需帶回岸上、不會引發海星斷肢再生。\n* **方法：** 使用注射槍將15%醋酸注入海星體內，其殘骸會自然分解回歸生態鏈。")
+                    # 放照片：注射海星 (因為檔案列表沒看到注射的照片，暫時用夾海星或預設圖)
+                    solara.Image(img_placeholder, width="100%")
+                
+                
+        # --- 3. 珊瑚復育區塊 (行動二) ---
+>>>>>>> bb1e242da00e717f4b7253746d91b3702b467f65
         with solara.Card("🪸 行動二：珊瑚復育 "):
             with solara.Row(gap="20px", style={"flex-wrap": "wrap"}):
                 with solara.Column(style={"flex": "1", "min-width": "450px"}):
                     solara.Markdown("#### 海洋花園植栽計畫")
+<<<<<<< HEAD
                     solara.Markdown("澎湖縣政府與水產種苗場推動的珊瑚復育計畫...")
+=======
+                    solara.Markdown("""
+                    澎湖縣政府與水產種苗場推動的珊瑚復育計畫，
+                    在鎖港杭灣打造人工珊瑚礁生態系，利用軸孔珊瑚等進行無性繁殖與移植，形成水下「花園」。
+                    """)
+                    # 放照片：種珊瑚
+>>>>>>> bb1e242da00e717f4b7253746d91b3702b467f65
                     solara.Image(img_plant, width="100%")
 
         # --- 4. 海洋廢棄物清理區塊 ---
         with solara.Card("🗑️ 行動三：海洋廢棄物清理 "):
+<<<<<<< HEAD
             solara.Markdown(f"#### 海洋廢棄物統計資訊: [點此連結]({url_debris})")            
             solara.Image(img_chart, width="100%")
             solara.Markdown("#### 相關報導：綠色和平清除廢網")
+=======
+            solara.Markdown(f"#### 海洋廢棄物統計資訊: [點此連結]({url_debris})")
+            
+            # 放照片：海洋垃圾圖表
+            solara.Image(img_chart, width="100%")
+            
+            solara.Markdown("#### 海洋廢棄物治理計畫")
+            solara.Markdown("除了因季風帶來的海洋垃圾問題之外，過度的捕撈，廢棄漁網會覆蓋珊瑚導致其死亡，並纏繞海龜等生物。")
+            
+            solara.Markdown("#### 相關報導：綠色和平清除廢網")
+            # 放照片：漁網
+>>>>>>> bb1e242da00e717f4b7253746d91b3702b467f65
             solara.Image(img_net, width="100%")
             solara.Markdown("* [綠色和平於澎湖海域清出約 400 公斤廢網](https://www.greenpeace.org/taiwan/press/32491/)")
         
         solara.Markdown("<br>")
         solara.v.Divider()
+<<<<<<< HEAD
         solara.Markdown("© 2025 澎湖珊瑚礁生態守護專案", style="color:gray; text-align:center")
+=======
+        solara.Markdown("© 2025 澎湖珊瑚礁生態守護專案 | 數據來源：EE, iOcean, 澎湖縣政府", style="color:gray; text-align:center")
+>>>>>>> bb1e242da00e717f4b7253746d91b3702b467f65
