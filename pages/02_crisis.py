@@ -213,7 +213,7 @@ def SSTCoralChart():
         # [修正] 正名為「珊瑚/藻類」
         fig.add_trace(go.Bar(x=df_mixed['Year'], y=coral_algae_values, name='珊瑚/藻類', marker_color='rgba(0, 206, 209, 0.7)', yaxis='y2'))
         fig.add_trace(go.Scatter(x=df_mixed['Year'], y=df_mixed['SST_Summer'], name='夏季均溫', mode='lines+markers', line=dict(color='#e74c3c', width=4)))
-        fig.update_layout(title='環境壓力 vs 珊瑚/藻類面積趨勢', xaxis=dict(title='年份'), yaxis=dict(title='海溫 (°C)', side='left'), yaxis2=dict(title='面積 (m²)', overlaying='y', side='right', showgrid=False), legend=dict(orientation="h", y=-0.2), height=400, margin=dict(l=40, r=40, t=40, b=40))
+        fig.update_layout(title='海溫 vs 珊瑚/藻類面積趨勢', xaxis=dict(title='年份'), yaxis=dict(title='海溫 (°C)', side='left'), yaxis2=dict(title='面積 (m²)', overlaying='y', side='right', showgrid=False), legend=dict(orientation="h", y=-0.2), height=400, margin=dict(l=40, r=40, t=40, b=40))
         solara.FigurePlotly(fig)
 
 # ==========================================
