@@ -1,14 +1,36 @@
 import solara
 import solara.lab
+import pathlib  # 用來讀取檔案路徑
 
 # ==========================================
-# 1. 設定圖片網址 (改回網址版，因為你的 Space 已經是 Public 了！)
+# 1. 圖片讀取小幫手 (讀取本機檔案)
 # ==========================================
-# 這是你的雲端檔案庫連結
-base_url = "https://huggingface.co/spaces/jarita094/ThecoralreefsinPenghuwillthrive/resolve/main/"
+def get_image(filename):
+    """
+    這個函式會嘗試直接從伺服器硬碟讀取圖片。
+    無論你的 Space 是公開還是私人，這招都有效。
+    """
+    # 1. 先找根目錄 (適用於 Hugging Face Space 環境)
+    path = pathlib.Path(filename)
+    
+    # 2. 如果根目錄找不到，試試看上一層 (適用於本機開發環境)
+    if not path.exists():
+        path = pathlib.Path("..") / filename
+        
+    # 3. 如果找到了，回傳圖片的數據 (Bytes)
+    if path.exists():
+        return path.read_bytes()
+    else:
+        # 找不到就回傳一個預設的錯誤圖
+        print(f"❌ 找不到圖片: {filename}")
+        return "https://via.placeholder.com/300?text=Image+Not+Found"
 
-# ⚠️ 注意：檔名必須跟你的檔案列表一模一樣 (包含大小寫)
-# 我根據你的截圖幫你對過了：
+# ==========================================
+# 2. 設定資料 (直接讀入圖片數據)
+# ==========================================
+# 這裡我們不再存網址字串，而是直接存圖片的檔案內容
+# 注意：這裡的檔名要跟你的截圖一模一樣 (包含空格)
+
 img_healthy_2019 = get_image("2019 healthy coral.jpg")
 img_dead_2021    = get_image("2021 dead coral.jpg")
 img_clamp        = get_image("Clamp starfish.jpg")
@@ -17,12 +39,9 @@ img_chart        = get_image("Ocean debris chart.png")
 img_net          = get_image("fishing net.jpg")
 img_dead         = get_image("dead starfish.jpg")
 
-# 備用圖
+# 備用圖 (這張還是用網址，因為它不在你的檔案列表裡)
 img_placeholder  = "https://huggingface.co/jarita094/starfish-assets/resolve/main/starfish.jpg"
 
-# ==========================================
-# 2. 資料設定
-# ==========================================
 coral_display_type = solara.reactive("硬珊瑚")
 
 coral_data = {
@@ -41,6 +60,7 @@ url_debris = "https://iocean.oca.gov.tw/oca_oceanconservation/public/Marine_Litt
 # ==========================================
 # 3. 頁面組件
 # ==========================================
+
 @solara.component
 def Page():
     with solara.Column(style={"width": "100%", "padding": "20px", "max-width": "1200px", "margin": "0 auto"}):
@@ -60,7 +80,7 @@ def Page():
                     with solara.lab.Tabs():
                         for label, info in coral_data.items():
                             with solara.lab.Tab(label):
-                                # 直接使用網址，Solara 會自動去抓 Public 的圖片
+                                # 這裡的 info["img"] 現在是圖片數據，Solara 會自動顯示
                                 solara.Image(info["img"], width="100%")
                                 solara.Markdown(f"**狀態：** {info['desc']}")
                     
@@ -89,10 +109,8 @@ def Page():
 
         # --- 4. 海洋廢棄物清理區塊 ---
         with solara.Card("🗑️ 行動三：海洋廢棄物清理 "):
-            solara.Markdown(f"#### 海洋廢棄物統計資訊: [點此連結]({url_debris})")
-            
+            solara.Markdown(f"#### 海洋廢棄物統計資訊: [點此連結]({url_debris})")            
             solara.Image(img_chart, width="100%")
-            
             solara.Markdown("#### 相關報導：綠色和平清除廢網")
             solara.Image(img_net, width="100%")
             solara.Markdown("* [綠色和平於澎湖海域清出約 400 公斤廢網](https://www.greenpeace.org/taiwan/press/32491/)")
